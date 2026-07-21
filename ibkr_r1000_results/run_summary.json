@@ -1,0 +1,21 @@
+{
+  "run_finished_local": "2026-07-21T01:41:31",
+  "host": "127.0.0.1",
+  "port": 4002,
+  "client_id": 81,
+  "accounts": [
+    "DUQ817826"
+  ],
+  "universe_size": 1024,
+  "processed": 1024,
+  "successes": 1017,
+  "failures": 7,
+  "success_rate_percent": 99.316,
+  "elapsed_seconds": 1834.991,
+  "request": {
+    "duration": "2 D",
+    "bar_size": "1 day",
+    "what_to_show": "ADJUSTED_LAST",
+    "use_rth": 1
+  }
+}

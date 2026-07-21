@@ -1,0 +1,35 @@
+# Python bytecode and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Test, type-checking, linting, and coverage artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local virtual environments and environment files
+.venv/
+venv/
+env/
+.env
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Project data and documents that should remain trackable
+!*.py
+!*.csv
+!*.json
+!*.md
+!*.docx
+!IWB_holdings.csv
+!ibkr_r1000_results/
