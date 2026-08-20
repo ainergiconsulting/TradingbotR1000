@@ -1,0 +1,20 @@
+TradingbotR1000 operator instructions
+
+Use the shortcuts in:
+   TradingbotControl
+
+1. Start IB Gateway and log in to the Paper account.
+
+2. Start the runtime:
+   Start Trading System.lnk
+
+3. View and operate the runtime:
+   Control Console.lnk
+
+4. Edit manual BUY candidates, if needed:
+   Manual Trading Watchlist.lnk
+
+5. Stop the runtime cleanly:
+   Stop Trading System.lnk
+
+No automatic trading start after reboot or logon is installed by this project.

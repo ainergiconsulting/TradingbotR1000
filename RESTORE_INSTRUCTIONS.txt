@@ -1,0 +1,14 @@
+TradingbotR1000 restore instructions
+
+1. Restore this repository to C:\TradingbotR1000.
+2. Recreate the local Python virtual environment.
+3. Install dependencies from requirements.txt.
+4. Recreate local secret files outside source control:
+   - current_reference\PaperTradingR1000\telegram_config.json
+   - current_reference\PaperTradingR1000\telegramtoken.txt
+   - current_reference\PaperTradingR1000\flex_config.json
+5. Recreate generated runtime folders if needed by running:
+   python current_reference\PaperTradingR1000\trading_engine.py --validate-only
+6. Populate the Russell 1000 universe and daily-bar data sources.
+7. Run:
+   python -m unittest discover

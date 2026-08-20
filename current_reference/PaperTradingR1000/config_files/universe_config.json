@@ -1,0 +1,8 @@
+{
+  "universe": "Russell 1000 stocks",
+  "source_type": "csv",
+  "source_path": "IWB_holdings.csv",
+  "daily_bars_dir": "data/daily_bars",
+  "symbol_column": "Ticker",
+  "notes": "The constituent source is a local implementation setting. The approved strategy defines Russell 1000 membership but does not define a provider."
+}

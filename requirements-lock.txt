@@ -1,0 +1,4 @@
+# Regenerate after the project virtual environment is created and dependencies are pinned.
+ib-insync
+openpyxl
+pandas

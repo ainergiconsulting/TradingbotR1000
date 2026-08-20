@@ -33,3 +33,30 @@ Thumbs.db
 !*.docx
 !IWB_holdings.csv
 !ibkr_r1000_results/
+
+# TradingbotR1000 generated runtime evidence and local secrets
+current_reference/PaperTradingR1000/state/*
+current_reference/PaperTradingR1000/logs/*
+current_reference/PaperTradingR1000/reports/*
+current_reference/PaperTradingR1000/Alerts/*
+current_reference/PaperTradingR1000/telegram_config.json
+current_reference/PaperTradingR1000/telegramtoken.txt
+current_reference/PaperTradingR1000/flex_config.json
+analytics/logs/*
+analytics/reports/*
+analytics/data/raw/*
+analytics/data/normalized/*
+analytics/data/excel_feed/*
+analytics/database/*
+!current_reference/PaperTradingR1000/state/.gitkeep
+!current_reference/PaperTradingR1000/logs/.gitkeep
+!current_reference/PaperTradingR1000/reports/.gitkeep
+!current_reference/PaperTradingR1000/Alerts/.gitkeep
+!analytics/data/raw/.gitkeep
+!analytics/data/normalized/.gitkeep
+!analytics/data/excel_feed/.gitkeep
+!analytics/database/.gitkeep
+
+# Large local datasets and backtest outputs
+data/
+backtests/

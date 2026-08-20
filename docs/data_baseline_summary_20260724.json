@@ -1,0 +1,10 @@
+﻿{
+    "created_at_local":  "2026-07-24T11:04:23",
+    "project_root":  "C:\\TradingbotR1000",
+    "daily_bars_directory":  "C:\\TradingbotR1000\\data\\daily_bars",
+    "daily_bar_file_count":  1025,
+    "iwb_holdings_path":  "C:\\TradingbotR1000\\IWB_holdings.csv",
+    "symbol_validation_csv":  "C:\\TradingbotR1000\\ibkr_r1000_results\\symbol_compatibility_validation.csv",
+    "massive_checkpoint_csv":  "C:\\TradingbotR1000\\ibkr_r1000_results\\historical_bars.massive_checkpoint.csv",
+    "note":  "Metadata baseline only; no production runtime files were modified."
+}

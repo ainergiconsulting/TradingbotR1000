@@ -1,0 +1,18 @@
+{
+  "strategy_version": "1.1",
+  "universe": "Russell 1000 stocks",
+  "timeframe": "daily",
+  "investable_capital_pct": 0.7,
+  "liquidity_reserve_pct": 0.3,
+  "position_allocation_pct": 0.2,
+  "max_positions": 5,
+  "leverage_allowed": false,
+  "moving_average_period": 200,
+  "bollinger_period": 20,
+  "bollinger_std_dev": 2.5,
+  "buy_limit_multiplier": 0.97,
+  "ranking_lookback_days": 150,
+  "rsi_period": 2,
+  "rsi_exit_cross_level": 50.0,
+  "max_holding_trading_days": 10
+}

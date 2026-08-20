@@ -1,0 +1,13 @@
+{
+  "enabled": false,
+  "bot_token_file": "current_reference/PaperTradingR1000/telegramtoken.txt",
+  "allowed_chat_ids": [],
+  "commands": [
+    "status",
+    "health",
+    "portfolio",
+    "orders",
+    "scan",
+    "reconciliation"
+  ]
+}

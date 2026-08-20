@@ -1,0 +1,459 @@
+{
+  "tracker_version": "2.1",
+  "project": "TradingbotR1000",
+  "last_updated_local": "2026-07-24T17:10:48",
+  "progress_method": "fixed_registered_task_weights",
+  "progress_note": "Planning completion and implementation completion are tracked separately. Implementation completion counts only completed functional implementation and validation tasks, not documentation or planning. Bulk processing must be automated through reusable Python code rather than Codex reasoning whenever practical.",
+  "current_programme": "Program B - Scientific Research",
+  "current_phase": "B7 - Final Decision",
+  "phase_status": "complete_research_only_no_runtime_change",
+  "phase_control": {
+    "phase_a2_full_collection": "complete",
+    "full_massive_corporate_action_collection_started": true,
+    "full_massive_corporate_action_collection_complete": true,
+    "historical_corporate_action_validation_complete": true,
+    "phase_a2_validation_findings_investigated": true,
+    "bulk_processing_principle_active": true,
+    "security_master_built": true,
+    "security_master_validated": true,
+    "security_master_runtime_integrated": false,
+    "massive_ohlcv_downloads_started": false,
+    "production_runtime_changed": false,
+    "program_b_market_state_dataset_built": true,
+    "program_b_conditional_performance_complete": true,
+    "program_b_operating_rule_validation_complete": true,
+    "program_b_production_runtime_changed": false
+  },
+  "project_progress": {
+    "planning": {
+      "total_registered_weight": 7,
+      "completed_weight": 7,
+      "completion_pct": 100.0
+    },
+    "implementation": {
+      "total_registered_weight": 31,
+      "completed_weight": 19,
+      "completion_pct": 61.29
+    }
+  },
+  "programmes": [
+    {
+      "programme": "Program A - Production & Data Integrity",
+      "objective": "Build a robust, autonomous and production-ready trading system.",
+      "planning": {
+        "total_registered_weight": 5,
+        "completed_weight": 5,
+        "completion_pct": 100.0,
+        "tasks": [
+          {
+            "id": "A.P1",
+            "task": "Refine planning documentation for explicit Program A and Program B separation.",
+            "status": "complete",
+            "weight": 1
+          },
+          {
+            "id": "A.P2",
+            "task": "Define Phase A2.5 Historical Data Correction Design.",
+            "status": "complete",
+            "weight": 1
+          },
+          {
+            "id": "A.P3",
+            "task": "Separate planning progress from implementation progress.",
+            "status": "complete",
+            "weight": 1
+          },
+          {
+            "id": "A.P4",
+            "task": "Cross-reference Phase A2.5 in roadmap, data plan and decision log.",
+            "status": "complete",
+            "weight": 1
+          },
+          {
+            "id": "A.P5",
+            "task": "Introduce project-wide engineering principle requiring reusable Python automation for bulk processing.",
+            "status": "complete",
+            "weight": 1
+          }
+        ]
+      },
+      "implementation": {
+        "total_registered_weight": 22,
+        "completed_weight": 10,
+        "completion_pct": 45.45,
+        "testing_status": "security_master_built_and_validated",
+        "phases": [
+          {
+            "phase": "A2 - One-Time Massive Historical Correction Inputs",
+            "status": "complete_with_data_quality_findings",
+            "tasks": [
+              {
+                "id": "A2.I1",
+                "task": "Implement one-time corporate-action collector without OHLCV re-download.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "A2.I2",
+                "task": "Validate collector compile, dry-run and offline consolidation behavior.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "A2.I3",
+                "task": "Validate live one-symbol corporate-action sample.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "A2.I4",
+                "task": "Collect full current-universe corporate actions with checkpoints.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "A2.I5",
+                "task": "Validate existing historical bars against collected corporate actions.",
+                "status": "complete_with_blocking_findings",
+                "weight": 1
+              },
+              {
+                "id": "A2.I6",
+                "task": "Classify Phase A2 validation findings and document safest resolution strategy before corrected dataset promotion.",
+                "status": "complete",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "A3 - Security Master",
+            "status": "complete_shadow_ready",
+            "tasks": [
+              {
+                "id": "A3.I1",
+                "task": "Create Canonical Security ID database schema.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "A3.I2",
+                "task": "Build initial Security Master from IWB, IBKR validation cache and reference data.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "A3.I3",
+                "task": "Add Security Master import/export utilities.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "A3.I4",
+                "task": "Run shadow compatibility validation against current runtime symbols.",
+                "status": "complete",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "A4 - Daily IWB Universe Update",
+            "status": "pending",
+            "tasks": [
+              {
+                "id": "A4.I1",
+                "task": "Implement daily IWB holdings downloader.",
+                "status": "pending",
+                "weight": 1
+              },
+              {
+                "id": "A4.I2",
+                "task": "Implement snapshot validation, atomic promotion and fallback.",
+                "status": "pending",
+                "weight": 1
+              },
+              {
+                "id": "A4.I3",
+                "task": "Implement additions/removals/change reporting.",
+                "status": "pending",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "A5 - IBKR Daily OHLCV Update Workflow",
+            "status": "pending",
+            "tasks": [
+              {
+                "id": "A5.I1",
+                "task": "Implement IBKR-only daily OHLCV updater for missing recent bars.",
+                "status": "pending",
+                "weight": 1
+              },
+              {
+                "id": "A5.I2",
+                "task": "Implement minimum warm-up download for genuinely new IWB constituents.",
+                "status": "pending",
+                "weight": 1
+              },
+              {
+                "id": "A5.I3",
+                "task": "Add validation tests for corrupted-bar rejection.",
+                "status": "pending",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "A6 - Adjusted Historical Dataset Builder",
+            "status": "pending",
+            "tasks": [
+              {
+                "id": "A6.I1",
+                "task": "Implement split-adjusted dataset builder from raw bars plus corporate actions.",
+                "status": "pending",
+                "weight": 1
+              },
+              {
+                "id": "A6.I2",
+                "task": "Evaluate dividend adjustment and total-return dataset feasibility.",
+                "status": "pending",
+                "weight": 1
+              },
+              {
+                "id": "A6.I3",
+                "task": "Validate adjusted research datasets before use.",
+                "status": "pending",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "A7 - Production Shadow Integration",
+            "status": "pending",
+            "tasks": [
+              {
+                "id": "A7.I1",
+                "task": "Integrate Security Master-backed universe in shadow mode.",
+                "status": "pending",
+                "weight": 1
+              },
+              {
+                "id": "A7.I2",
+                "task": "Run shadow scan comparisons and report all differences.",
+                "status": "pending",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "A8 - Controlled Production Data Switch",
+            "status": "blocked_pending_explicit_approval",
+            "tasks": [
+              {
+                "id": "A8.I1",
+                "task": "Prepare and execute production data-source switch only after explicit approval.",
+                "status": "blocked_pending_explicit_approval",
+                "weight": 1
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "programme": "Program B - Scientific Research",
+      "objective": "Determine under which market conditions the strategy generates alpha and when it should reduce exposure or remain inactive.",
+      "planning": {
+        "total_registered_weight": 2,
+        "completed_weight": 2,
+        "completion_pct": 100.0,
+        "tasks": [
+          {
+            "id": "B.P1",
+            "task": "Define market-state-dataset-first research plan.",
+            "status": "complete",
+            "weight": 1
+          },
+          {
+            "id": "B.P2",
+            "task": "Update research roadmap and registry with Program B sequencing.",
+            "status": "complete",
+            "weight": 1
+          }
+        ]
+      },
+      "implementation": {
+        "total_registered_weight": 9,
+        "completed_weight": 9,
+        "completion_pct": 100.0,
+        "testing_status": "program_b_outputs_generated_and_validated",
+        "phases": [
+          {
+            "phase": "B1 - Market-State Dataset Build",
+            "status": "complete_research_only",
+            "tasks": [
+              {
+                "id": "B1.I1",
+                "task": "Specify executable market-state dataset schema.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "B1.I2",
+                "task": "Implement market-state feature builder on corrected data.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "B1.I3",
+                "task": "Validate no-look-ahead feature construction.",
+                "status": "complete",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "B2 - Market-State Analysis And Regime Discovery",
+            "status": "complete_research_only",
+            "tasks": [
+              {
+                "id": "B2.I1",
+                "task": "Analyse market-state distributions and relationships with strategy outcomes.",
+                "status": "complete",
+                "weight": 1
+              },
+              {
+                "id": "B2.I2",
+                "task": "Develop candidate regime definitions only after market-state analysis.",
+                "status": "complete",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "B3 - Conditional Performance Analysis",
+            "status": "complete_research_only",
+            "tasks": [
+              {
+                "id": "B3.I1",
+                "task": "Analyse production and research baselines by candidate market regime.",
+                "status": "complete",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "B4 - Robustness And Out-of-Sample Checks",
+            "status": "complete_research_only",
+            "tasks": [
+              {
+                "id": "B4.I1",
+                "task": "Validate regime findings across chronological and rolling windows.",
+                "status": "complete",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "B5 - Research Activation Framework",
+            "status": "complete_research_only",
+            "tasks": [
+              {
+                "id": "B5.I1",
+                "task": "Evaluate research-only activation modes without production behavior changes.",
+                "status": "complete",
+                "weight": 1
+              }
+            ]
+          },
+          {
+            "phase": "B6 - Production Change Proposal",
+            "status": "complete_no_production_change",
+            "tasks": [
+              {
+                "id": "B6.I1",
+                "task": "Prepare production change proposal only if evidence justifies it and user approval is granted.",
+                "status": "complete_no_production_change",
+                "weight": 1
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "completed_work": {
+    "planning": [
+      "Program A and Program B split documented.",
+      "Security Master refined to permanent Canonical Security ID model.",
+      "Massive dependency boundary refined to one-time historical correction only.",
+      "Daily operation refined to IWB plus IBKR after migration.",
+      "Data-quality checks expanded in planning documentation.",
+      "Program B market-state-dataset-first approach documented.",
+      "Phase A2.5 Historical Data Correction Design completed.",
+      "Progress tracker split into planning and implementation completion.",
+      "Project-wide engineering principle introduced: reusable Python automation is required for bulk data processing whenever practical."
+    ],
+    "implementation": [
+      "One-time Massive corporate-action collector implemented outside the production runtime.",
+      "Collector compile, dry-run and offline consolidation checks passed.",
+      "Live AAPL corporate-action sample passed for splits, dividends and ticker details with no OHLCV download.",
+      "Full current-universe Massive corporate-action collection completed for 1022 symbols with HOLX and NSA treated as known exclusions.",
+      "Existing historical bars were validated against collected corporate actions; validation produced 905 passed, 111 review-required, 6 failed and 2 excluded symbols.",
+      "Phase A2 validation findings were classified with reusable Python tooling; safest resolution strategy was documented before corrected dataset promotion.",
+      "Security Master SQLite database, exports, build tooling and validation tooling were implemented.",
+      "Security Master validation passed for 1024 current IWB securities, 1022 tradable IBKR contracts, two known exclusions, six Phase A2 blockers and required share-class mappings.",
+      "Program B market-state dataset, conditional-performance analysis, parameter-condition review, operating-rule validation and final decision report completed with no production runtime changes."
+    ]
+  },
+  "pending_work": {
+    "planning": [],
+    "implementation": [
+      "Resolve, repair, quarantine or explicitly exclude Phase A2 blocking corporate-action validation symbols: HLT, HEI.A, DD, HEI, CGNX and APLD.",
+      "Implement daily IWB holdings updates.",
+      "Implement IBKR daily OHLCV update workflow.",
+      "Build adjusted research datasets.",
+      "Run production shadow validation."
+    ]
+  },
+  "blockers": [
+    "Phase A2 validation found six symbols with blocking split or corporate-action validation issues: HLT, HEI.A, DD, HEI, CGNX and APLD. Corrected dataset generation or promotion must not proceed until these are repaired, quarantined or explicitly excluded."
+  ],
+  "decisions_pending": [
+    "Decide the approved treatment for Phase A2 blocking validation symbols: repair, quarantine or exclusion.",
+    "Confirm exact official IWB holdings acquisition URL before automated downloader implementation.",
+    "Validate ticker-events endpoint entitlement and reliability if it is needed for ticker-change research.",
+    "Explicit approval required before any production data-source switch.",
+    "Explicit approval required before any production strategy change."
+  ],
+  "evidence_files": [
+    "C:\\TradingbotR1000\\docs\\BASELINE_EVIDENCE_20260724.md",
+    "C:\\TradingbotR1000\\docs\\baseline_hashes_20260724.csv",
+    "C:\\TradingbotR1000\\docs\\runtime_state_metadata_20260724.csv",
+    "C:\\TradingbotR1000\\docs\\data_baseline_summary_20260724.json",
+    "C:\\TradingbotR1000\\docs\\Phase_A2_5_Historical_Data_Correction_Design.md",
+    "C:\\TradingbotR1000\\ibkr_r1000_results\\massive_corporate_actions_report.json",
+    "C:\\TradingbotR1000\\data\\validation\\historical_corporate_actions\\historical_bars_corporate_action_validation_report.json",
+    "C:\\TradingbotR1000\\docs\\PHASE_A2_CORPORATE_ACTION_COLLECTION_AND_VALIDATION_REPORT_20260724.md",
+    "C:\\TradingbotR1000\\docs\\ENGINEERING_PRINCIPLES.md",
+    "C:\\TradingbotR1000\\docs\\PHASE_A2_VALIDATION_FINDINGS_INVESTIGATION_20260724.md",
+    "C:\\TradingbotR1000\\data\\validation\\historical_corporate_actions\\phase_a2_finding_diagnostics.csv",
+    "C:\\TradingbotR1000\\data\\validation\\historical_corporate_actions\\phase_a2_finding_diagnostics_summary.json",
+    "C:\\TradingbotR1000\\docs\\SECURITY_MASTER.md",
+    "C:\\TradingbotR1000\\docs\\PHASE_A3_SECURITY_MASTER_REPORT_20260724.md",
+    "C:\\TradingbotR1000\\data\\security_master\\security_master.sqlite3",
+    "C:\\TradingbotR1000\\data\\security_master\\security_master_export.csv",
+    "C:\\TradingbotR1000\\data\\security_master\\security_master_manifest.json",
+    "C:\\TradingbotR1000\\data\\security_master\\security_master_validation_report.json",
+    "C:\\TradingbotR1000\\docs\\PROGRAM_B_CORRECTED_WORK_PLAN.md",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170230\\daily_market_state.csv",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170230\\program_b_final_decision_report.md",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170230\\program_b_summary.json",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170628\\daily_market_state.csv",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170628\\program_b_final_decision_report.md",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170628\\program_b_summary.json",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170852\\daily_market_state.csv",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170852\\program_b_final_decision_report.md",
+    "C:\\TradingbotR1000\\backtests\\r1000_max_positions_corrected\\strategy_analysis\\program_b_market_conditions\\run_20260724_170852\\program_b_summary.json"
+  ]
+}

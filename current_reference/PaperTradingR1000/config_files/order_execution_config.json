@@ -1,0 +1,8 @@
+{
+  "allow_long": true,
+  "allow_short": false,
+  "paper_trading_required": true,
+  "execute_orders_default": false,
+  "duplicate_order_window_seconds": 300,
+  "notes": "Broker execution settings must not add strategy rules, order type requirements, or time-in-force requirements."
+}
