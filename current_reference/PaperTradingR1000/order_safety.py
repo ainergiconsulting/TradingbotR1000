@@ -4,7 +4,11 @@ import hashlib
 import inspect
 import json
 import math
-import msvcrt
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
+    import fcntl
 import os
 from pathlib import Path
 import re
@@ -59,7 +63,10 @@ class _NonBlockingFileLease:
                 handle.write(b"#")
                 handle.flush()
             handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            if msvcrt is not None:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         except OSError as error:
             handle.close()
             raise LongOnlyOrderRejected(
@@ -74,7 +81,10 @@ class _NonBlockingFileLease:
         try:
             self.handle.seek(0)
             try:
-                msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+                if msvcrt is not None:
+                    msvcrt.locking(self.handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(self.handle.fileno(), fcntl.LOCK_UN)
             except OSError:
                 pass
         finally:

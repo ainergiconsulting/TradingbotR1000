@@ -9,9 +9,14 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 import json
-import msvcrt
+try:
+    import msvcrt
+except ImportError:
+    msvcrt = None
+    import fcntl
 import socket
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -277,7 +282,10 @@ def _acquire_probe_lock():
         return None
     try:
         handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        if msvcrt is not None:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
         return handle
     except OSError:
         handle.close()
@@ -289,7 +297,10 @@ def _release_probe_lock(handle) -> None:
         return
     try:
         handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        if msvcrt is not None:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     except OSError:
         pass
     handle.close()
@@ -497,19 +508,65 @@ def _run_text(args: list[str], timeout: float = 3.0) -> str:
 
 
 def gateway_processes() -> list[dict[str, str]]:
-    output = _run_text(["tasklist", "/fo", "csv", "/nh"])
     rows: list[dict[str, str]] = []
+    if sys.platform.startswith("win"):
+        output = _run_text(["tasklist", "/fo", "csv", "/nh"])
+        for line in output.splitlines():
+            parts = [part.strip().strip('"') for part in line.split('","')]
+            if len(parts) < 2:
+                continue
+            image = parts[0].lower()
+            if image in GATEWAY_PROCESS_NAMES or "ibgateway" in image:
+                rows.append({"image": parts[0], "pid": parts[1]})
+        return rows
+
+    output = _run_text(["ps", "-eo", "pid=,args="])
     for line in output.splitlines():
-        parts = [part.strip().strip('"') for part in line.split('","')]
-        if len(parts) < 2:
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2:
             continue
-        image = parts[0].lower()
-        if image in GATEWAY_PROCESS_NAMES or "ibgateway" in image:
-            rows.append({"image": parts[0], "pid": parts[1]})
+        pid, args = parts
+        lower = args.lower()
+        if "ibgateway" in lower:
+            rows.append({"image": args, "pid": pid})
     return rows
 
 
 def port_owner(host: str, port: int) -> dict[str, Any]:
+    if not sys.platform.startswith("win"):
+        output = _run_text(["ss", "-ltnp"])
+        suffix = f":{int(port)}"
+        for line in output.splitlines():
+            if suffix not in line or "LISTEN" not in line:
+                continue
+            compact = " ".join(line.split())
+            parts = compact.split()
+            local_addr = parts[3] if len(parts) > 3 else ""
+            pid = ""
+            image = ""
+            if 'pid=' in line:
+                try:
+                    pid = line.split('pid=', 1)[1].split(',', 1)[0]
+                except Exception:
+                    pid = ""
+            if 'users:(("' in line:
+                try:
+                    image = line.split('users:(("', 1)[1].split('"', 1)[0]
+                except Exception:
+                    image = ""
+            image_lower = image.lower()
+            process_identified = bool(image_lower)
+            expected = (not process_identified) or image_lower in GATEWAY_PROCESS_NAMES or "java" in image_lower or "ibgateway" in image_lower
+            return {
+                "listening": True,
+                "pid": pid,
+                "image": image,
+                "expected_process": expected,
+                "process_identified": process_identified,
+                "local_address": local_addr,
+            }
+        return {"listening": False, "pid": "", "image": "", "expected_process": False, "process_identified": False, "local_address": ""}
+
     output = _run_text(["netstat", "-ano", "-p", "tcp"])
     suffix = f":{int(port)}"
     for line in output.splitlines():
@@ -631,8 +688,8 @@ def reconciliation_evidence_freshness(recon: dict[str, Any], now: datetime | Non
 def manual_login_likely_from_logs(max_age_hours: int = 24, now: datetime | None = None) -> tuple[bool, str]:
     now = now or utc_now()
     candidates = [
-        Path(r"C:\Jts\ibgateway\1045\launcher.log"),
-        Path(r"C:\Jts\ibgateway\1045\bmjbfoplppdhjbjbilnfiiehebjoocebjjecefjh\LOGS\20260706.txt"),
+        Path.home() / "Jts" / "launcher.log",
+        *((Path.home() / "Jts" / "ibgateway" / "1045").glob("**/LOGS/*")),
     ]
     needles = (
         "security tokens associated with your login credentials have expired",
