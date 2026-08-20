@@ -33,6 +33,10 @@ IBKR_PRIMARY_EXCHANGE_ALIASES = {
 IBKR_UNRESOLVED_EXCLUSIONS: dict[str, str] = {
     "HOLX": "ibkr_unresolved_no_market_universe_symbol",
     "NSA": "ibkr_value_only_no_smart_or_nyse_stock_contract",
+    "EA": "ibkr_value_only_corporate_action",
+    "AVB": "ibkr_value_only_corporate_action",
+    "EQR": "ibkr_unresolved_corporate_action",
+    "WBS": "ibkr_value_only_corporate_action",
 }
 
 
