@@ -27,7 +27,22 @@ def render_status() -> str:
 
 
 def render_health() -> str:
-    return json.dumps(collect_system_health(write=False), indent=2, default=str)
+    health = collect_system_health()
+    return "\n".join(
+        [
+            f"{cfg.BOT_NAME} health",
+            f"Gateway: {health.get('gateway_process_status', 'UNKNOWN')}",
+            f"API socket: {health.get('api_socket_status', 'UNKNOWN')}",
+            f"Live API: {health.get('live_api_status', 'UNKNOWN')}",
+            f"Market: {health.get('market_status', 'UNKNOWN')}",
+            f"Liquid hours: {health.get('liquid_hours_status', 'UNKNOWN')}",
+            f"Runtime: {health.get('runtime_process', 'UNKNOWN')}",
+            f"Heartbeat: {health.get('last_heartbeat_age', 'unknown')}",
+            f"Reconciliation: {health.get('last_reconciliation_result', 'UNKNOWN')}",
+            f"Trading enabled: {health.get('trading_enabled', False)}",
+            f"Reason: {health.get('reason_trading_disabled', '') or 'none'}",
+        ]
+    )
 
 
 def render_portfolio() -> str:
