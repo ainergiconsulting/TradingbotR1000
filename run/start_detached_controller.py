@@ -13,6 +13,10 @@ def _timestamp() -> str:
 
 
 def _python_executable(project_root: Path) -> Path | None:
+    current = Path(sys.executable)
+    if current.exists():
+        return current
+
     scripts_dir = project_root / ".venv" / "Scripts"
     pythonw = scripts_dir / "pythonw.exe"
     if pythonw.exists():
@@ -20,6 +24,11 @@ def _python_executable(project_root: Path) -> Path | None:
     python = scripts_dir / "python.exe"
     if python.exists():
         return python
+
+    linux_python = project_root / ".venv" / "bin" / "python"
+    if linux_python.exists():
+        return linux_python
+
     return None
 
 
