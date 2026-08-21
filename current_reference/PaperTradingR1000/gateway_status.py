@@ -719,6 +719,7 @@ def normalize_ib_timezone(timezone_id: Any) -> str:
     mapping = {
         "EST": "America/New_York",
         "EDT": "America/New_York",
+        "US/Eastern": "America/New_York",
         "CST": "America/Chicago",
         "MST": "America/Denver",
         "PST": "America/Los_Angeles",
