@@ -1,0 +1,15 @@
+[Unit]
+Description=TradingbotR1000 Fluxbox Desktop
+Requires=tradingbot-xvfb.service
+After=tradingbot-xvfb.service
+
+[Service]
+Type=simple
+User=ibkradmin
+Environment=DISPLAY=:1
+ExecStart=/usr/bin/fluxbox
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

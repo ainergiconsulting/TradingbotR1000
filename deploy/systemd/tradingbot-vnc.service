@@ -1,0 +1,15 @@
+[Unit]
+Description=TradingbotR1000 x11vnc Server
+Requires=tradingbot-xvfb.service
+After=tradingbot-xvfb.service tradingbot-fluxbox.service
+
+[Service]
+Type=simple
+User=ibkradmin
+Environment=DISPLAY=:1
+ExecStart=/usr/bin/x11vnc -display :1 -localhost -forever -shared -nopw
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

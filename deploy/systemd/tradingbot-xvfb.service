@@ -1,0 +1,13 @@
+[Unit]
+Description=TradingbotR1000 Virtual X Display
+After=network.target
+
+[Service]
+Type=simple
+User=ibkradmin
+ExecStart=/usr/bin/Xvfb :1 -screen 0 1280x800x24
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
