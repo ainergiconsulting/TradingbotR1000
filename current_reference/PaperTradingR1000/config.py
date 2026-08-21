@@ -50,6 +50,7 @@ IGNORED_SYMBOLS_FILE = STATE_DIR / "ignored_symbols.txt"
 STRATEGY_CONSTANTS_FILE = CONFIG_DIR / "strategy_constants.json"
 UNIVERSE_CONFIG_FILE = CONFIG_DIR / "universe_config.json"
 ORDER_EXECUTION_CONFIG_FILE = CONFIG_DIR / "order_execution_config.json"
+TELEGRAM_CONFIG_FILE = BASE_DIR / "telegram_config.json"
 TELEGRAM_CONFIG_EXAMPLE_FILE = BASE_DIR / "telegram_config.example.json"
 
 SCAN_REPORT_FILE = REPORTS_DIR / "daily_scan_report.json"
