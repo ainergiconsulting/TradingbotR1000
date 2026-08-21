@@ -80,6 +80,18 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
         live_api_error = type(error).__name__
 
     previous_ibkr_status = str(previous.get("ibkr_connection_status") or "").upper()
+    previous_heartbeat_fresh = previous.get("heartbeat_fresh")
+
+    if previous_heartbeat_fresh is True and fresh is False:
+        write_alert(
+            "heartbeat_stale",
+            "TradingbotR1000 heartbeat became stale.",
+        )
+    elif previous_heartbeat_fresh is False and fresh is True:
+        write_alert(
+            "heartbeat_recovered",
+            "TradingbotR1000 heartbeat recovered.",
+        )
 
     if previous_ibkr_status == "CONNECTED" and ibkr_status == "DISCONNECTED":
         write_alert(
