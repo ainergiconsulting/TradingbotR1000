@@ -1,0 +1,16 @@
+[Unit]
+Description=TradingbotR1000 Telegram Read-Only Listener
+After=network.target
+
+[Service]
+Type=simple
+User=ibkradmin
+WorkingDirectory=/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000
+Environment=PYTHONUTF8=1
+Environment=PYTHONIOENCODING=utf-8
+ExecStart=/home/ibkradmin/trading/venv/bin/python -X utf8 -B -u telegram_listener.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
