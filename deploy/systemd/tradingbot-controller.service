@@ -8,6 +8,7 @@ User=ibkradmin
 WorkingDirectory=/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000
 Environment=PYTHONUTF8=1
 Environment=PYTHONIOENCODING=utf-8
+Environment=TRADINGBOTR1000_ENABLE_AUTOMATED_PAPER_EXECUTION=1
 ExecStart=/home/ibkradmin/trading/venv/bin/python -X utf8 -B -u operational_controller.py
 Restart=on-failure
 RestartSec=5
