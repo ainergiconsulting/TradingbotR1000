@@ -20,6 +20,7 @@ from monitoring_io import atomic_write_json, utc_timestamp
 from runtime_processes import clear_pid, is_pid_running, process_info, read_pid, write_pid
 from runtime_health import HEALTH_OK, HEALTH_STOPPED, write_runtime_health
 from strategy_scheduler import is_cycle_due, record_cycle_result, runtime_summary
+from telegram_alerts import alert_engine_failure, alert_scan_completed
 
 
 def write_desired_running(running: bool) -> dict[str, Any]:
@@ -137,6 +138,10 @@ def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None)
         except Exception as exc:
             write_controller_status("FAILED", error=repr(exc), restart_attempt=restarts)
             write_runtime_bot_status("RUNNING", "strategy_cycle_failed", error=repr(exc), restart_attempt=restarts)
+            alert_engine_failure(
+                f"Strategy cycle raised {type(exc).__name__}: {exc}",
+                extra={"restart_attempt": restarts},
+            )
             raise
         if code == 0:
             try:
@@ -150,6 +155,12 @@ def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None)
             )
             write_controller_status("IDLE", last_exit_code=code)
             write_runtime_bot_status("RUNNING", "controller_idle", last_exit_code=code)
+            selected_count = len(scan_report.get("selected_candidates", []))
+            order_count = (
+                len(scan_report.get("order_plans", []))
+                + len(scan_report.get("sell_order_plans", []))
+            )
+            alert_scan_completed(selected_count, order_count)
             restarts = 0
             continue
         restarts += 1
@@ -158,6 +169,10 @@ def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None)
         if restarts > max_restarts:
             write_controller_status("MANUAL_INTERVENTION_REQUIRED", last_exit_code=code)
             write_runtime_bot_status("STOPPED", "manual_intervention_required", last_exit_code=code)
+            alert_engine_failure(
+                f"Strategy engine failed after {restarts} attempts; exit code {code}. Manual intervention required.",
+                extra={"restart_attempts": restarts, "last_exit_code": code},
+            )
             return code
         time.sleep(5)
     write_desired_running(False)
