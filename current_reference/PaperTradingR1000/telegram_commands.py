@@ -7,6 +7,7 @@ import json
 import config as cfg
 from execution_history import load_latest_execution_history
 from gateway_status import collect_system_health
+from live_account import collect_live_account_context
 from monitoring_core import collect_runtime_status, read_json
 from reconciliation import reconcile_local_state
 
@@ -46,15 +47,78 @@ def render_health() -> str:
 
 
 def render_portfolio() -> str:
-    broker_snapshot = read_json(cfg.BROKER_SNAPSHOT_FILE)
-    broker_positions = broker_snapshot.get("positions", [])
-    if broker_positions:
-        return json.dumps(broker_positions, indent=2, default=str)
-    state = read_json(cfg.STATE_FILE)
-    positions = state.get("active_positions", {})
-    if not positions:
-        return "No active R1000 positions recorded locally."
-    return json.dumps(positions, indent=2, default=str)
+    snapshot = collect_live_account_context(
+        client_id=cfg.TELEGRAM_CLIENT_ID,
+        readonly=True,
+    )
+
+    values = snapshot.get("account_values", {})
+    positions = snapshot.get("positions", [])
+
+    net_liquidation = float(values.get("net_liquidation") or 0.0)
+    cash = float(values.get("cash") or 0.0)
+    available_funds = float(values.get("available_funds") or 0.0)
+    buying_power = float(values.get("buying_power") or 0.0)
+
+    total_invested = 0.0
+    position_lines = []
+
+    for row in positions:
+        symbol = str(row.get("symbol") or "")
+        quantity = float(row.get("quantity") or 0.0)
+        average_cost = float(row.get("averageCost") or 0.0)
+        market_price = float(row.get("marketPrice") or 0.0)
+        market_value = float(row.get("marketValue") or 0.0)
+        unrealized_pnl = float(row.get("unrealizedPNL") or 0.0)
+
+        total_invested += market_value
+        weight = (
+            market_value / net_liquidation * 100.0
+            if net_liquidation > 0
+            else 0.0
+        )
+
+        position_lines.extend(
+            [
+                "",
+                symbol or "UNKNOWN",
+                f"Qty: {quantity:g}",
+                f"Avg: ${average_cost:,.2f}",
+                f"Price: ${market_price:,.2f}",
+                f"Value: ${market_value:,.2f}",
+                f"Unrealized P&L: ${unrealized_pnl:,.2f}",
+                f"Weight: {weight:.2f}%",
+            ]
+        )
+
+    cash_weight = (
+        cash / net_liquidation * 100.0
+        if net_liquidation > 0
+        else 0.0
+    )
+
+    lines = [
+        f"{cfg.BOT_NAME} Portfolio",
+        f"Account mode: {snapshot.get('account_mode', 'UNKNOWN')}",
+        f"Timestamp: {snapshot.get('timestamp_utc', '')}",
+        "",
+        f"Net liquidation: ${net_liquidation:,.2f}",
+        f"Cash: ${cash:,.2f}",
+        f"Available funds: ${available_funds:,.2f}",
+        f"Buying power: ${buying_power:,.2f}",
+        "",
+        f"Positions: {len(positions)}",
+        f"Invested: ${total_invested:,.2f}",
+        f"Cash weight: {cash_weight:.2f}%",
+    ]
+
+    if positions:
+        lines.extend(position_lines)
+    else:
+        lines.append("")
+        lines.append("No open broker positions.")
+
+    return "\n".join(lines)
 
 
 def render_orders() -> str:
