@@ -1,0 +1,16 @@
+[Unit]
+Description=TradingbotR1000 IB Gateway
+Requires=tradingbot-xvfb.service
+After=network.target tradingbot-xvfb.service tradingbot-fluxbox.service
+
+[Service]
+Type=simple
+ExitType=cgroup
+User=ibkradmin
+Environment=DISPLAY=:1
+ExecStart=/home/ibkradmin/Jts/ibgateway/1045/ibgateway
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
