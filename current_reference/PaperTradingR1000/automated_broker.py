@@ -112,7 +112,8 @@ def _sell_intents(scan: dict[str, Any], broker_context: dict[str, Any]) -> list[
     intents = []
     for row in scan.get("sell_order_plans", []) or []:
         symbol = str(row.get("symbol") or "").upper()
-        quantity = _as_float(row.get("quantity") or (positions.get(symbol) or {}).get("quantity"))
+        live_position = positions.get(symbol) or {}
+        quantity = _as_float(live_position.get("quantity") or live_position.get("position"))
         rejection = "" if quantity > 0 else "no_live_position_quantity"
         intents.append(
             {
@@ -203,6 +204,7 @@ def process_order_plan(
     rejected = []
     duplicate_preventions = []
     persisted = []
+    pending_submissions = []
 
     ib = None
     if transmission_permitted:
@@ -238,10 +240,14 @@ def process_order_plan(
             intent["submitted_at_utc"] = utc_timestamp()
             row = upsert_order_intent(intent, broker_status="PendingSubmit", reason="submitted_to_ibkr")
             trade = ib.placeOrder(contract, order)
+            pending_submissions.append((intent, row, trade))
+
+        if pending_submissions:
             ib.sleep(2)
-            broker = _broker_status_from_trade(trade)
-            update_order_status(order_key=row["order_key"], **broker)
-            submitted.append({"symbol": intent["symbol"], "side": intent["side"], **broker})
+            for intent, row, trade in pending_submissions:
+                broker = _broker_status_from_trade(trade)
+                update_order_status(order_key=row["order_key"], **broker)
+                submitted.append({"symbol": intent["symbol"], "side": intent["side"], **broker})
     except Exception as exc:
         log("automated order processing failed", level="ERROR", extra={"error": repr(exc)})
         raise

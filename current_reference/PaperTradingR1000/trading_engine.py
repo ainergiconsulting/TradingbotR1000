@@ -11,10 +11,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Any
+from zoneinfo import ZoneInfo
 
 from automated_broker import AutomatedBrokerError, process_order_plan
 import config as cfg
@@ -375,6 +377,34 @@ def build_sell_order_plans(exit_signals: list[dict[str, Any]], active_positions:
     return plans
 
 
+
+ORDER_TRANSMISSION_TZ = ZoneInfo(cfg.STRATEGY_CYCLE_TIMEZONE)
+
+
+def wait_until_order_transmission_time() -> None:
+    hour_text, minute_text = str(cfg.ORDER_TRANSMISSION_TIME_ET).split(":", 1)
+    target_hour = int(hour_text)
+    target_minute = int(minute_text)
+
+    while True:
+        if stop_bot_requested():
+            raise RuntimeError("stop_requested_before_order_transmission")
+
+        now_local = datetime.now(timezone.utc).astimezone(ORDER_TRANSMISSION_TZ)
+        target = now_local.replace(
+            hour=target_hour,
+            minute=target_minute,
+            second=0,
+            microsecond=0,
+        )
+
+        if now_local >= target:
+            return
+
+        remaining = (target - now_local).total_seconds()
+        time.sleep(min(1.0, max(0.05, remaining)))
+
+
 def run_scan_once(*, net_liquidation_value: float | None = None, require_universe_file: bool = True) -> dict[str, Any]:
     cfg.ensure_runtime_dirs()
     cycle_started_at = utc_timestamp()
@@ -465,6 +495,24 @@ def run_scan_once(*, net_liquidation_value: float | None = None, require_univers
     for signal in scan["exit_signals"]:
         signal["signal_date"] = market_data["signal_dates"].get(signal["symbol"], "")
     scan["sell_order_plans"] = build_sell_order_plans(scan["exit_signals"], state.get("active_positions") or {})
+
+    if cfg.EXECUTE_ORDERS:
+        wait_until_order_transmission_time()
+        broker_context = collect_live_account_context(
+            client_id=cfg.CLIENT_ID,
+            readonly=False,
+        )
+        fresh_values = broker_context["account_values"]
+        scan["live_account"] = {
+            "timestamp_utc": broker_context["timestamp_utc"],
+            "client_id": broker_context.get("client_id"),
+            "account_mode": broker_context.get("account_mode"),
+            "accounts": broker_context.get("accounts", []),
+            "account_values": fresh_values,
+        }
+        scan["broker_positions"] = broker_context.get("positions", [])
+        scan["broker_open_orders"] = broker_context.get("open_orders", [])
+
     execution_report = process_order_plan(scan, broker_context, transmit=cfg.EXECUTE_ORDERS)
     scan["automated_execution"] = {
         "report_file": str(cfg.AUTOMATED_EXECUTION_REPORT_FILE),
