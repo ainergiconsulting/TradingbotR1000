@@ -17,8 +17,8 @@ class TradingbotR1000StrategyCoreTests(unittest.TestCase):
 
         self.assertEqual(params.universe, "Russell 1000 stocks")
         self.assertEqual(params.timeframe, "daily")
-        self.assertEqual(params.investable_capital_pct, 0.70)
-        self.assertEqual(params.liquidity_reserve_pct, 0.30)
+        self.assertEqual(params.investable_capital_pct, 1.00)
+        self.assertEqual(params.liquidity_reserve_pct, 0.00)
         self.assertEqual(params.position_allocation_pct, 0.20)
         self.assertEqual(params.max_positions, 5)
         self.assertFalse(params.leverage_allowed)
@@ -28,7 +28,7 @@ class TradingbotR1000StrategyCoreTests(unittest.TestCase):
         self.assertEqual(params.buy_limit_multiplier, 0.97)
         self.assertEqual(params.ranking_lookback_days, 150)
         self.assertEqual(params.rsi_period, 2)
-        self.assertEqual(params.rsi_exit_cross_level, 50.0)
+        self.assertEqual(params.rsi_exit_cross_level, 60.0)
         self.assertEqual(params.max_holding_trading_days, 10)
 
     def test_entry_requires_close_above_sma_and_below_lower_bollinger_band(self):
@@ -57,9 +57,9 @@ class TradingbotR1000StrategyCoreTests(unittest.TestCase):
 
         self.assertEqual(plan.symbol, "AAA")
         self.assertEqual(plan.limit_price, 48.5)
-        self.assertEqual(plan.investable_capital, 70_000.0)
-        self.assertEqual(plan.liquidity_reserve, 30_000.0)
-        self.assertEqual(plan.allocation_value, 14_000.0)
+        self.assertEqual(plan.investable_capital, 100_000.0)
+        self.assertEqual(plan.liquidity_reserve, 0.0)
+        self.assertEqual(plan.allocation_value, 20_000.0)
         self.assertEqual(plan.intended_session, "next_trading_day")
 
     def test_ranking_is_applied_only_when_candidates_exceed_slots(self):
@@ -86,12 +86,12 @@ class TradingbotR1000StrategyCoreTests(unittest.TestCase):
         self.assertEqual([item.symbol for item in selection.skipped], ["ZZZ"])
 
     def test_rsi_exit_requires_cross_and_time_exit_uses_ten_trading_days(self):
-        self.assertTrue(strategy.is_rsi_exit_cross(50.0, 50.1))
+        self.assertTrue(strategy.is_rsi_exit_cross(60.0, 60.1))
         self.assertFalse(strategy.is_rsi_exit_cross(51.0, 55.0))
 
-        rsi_exit = strategy.exit_decision(49.0, 51.0, holding_trading_days=3)
+        rsi_exit = strategy.exit_decision(59.0, 61.0, holding_trading_days=3)
         self.assertTrue(rsi_exit.should_exit)
-        self.assertEqual(rsi_exit.reason, "rsi_cross_above_50")
+        self.assertEqual(rsi_exit.reason, "rsi_cross_above_60")
         self.assertEqual(rsi_exit.timing, "next_market_open")
 
         time_exit = strategy.exit_decision(20.0, 30.0, holding_trading_days=10)
@@ -105,8 +105,8 @@ class TradingbotR1000StrategyCoreTests(unittest.TestCase):
     def test_rsi_values_are_computed_from_completed_daily_closes(self):
         previous_rsi, current_rsi = strategy.latest_rsi_cross_values([100.0, 99.0, 98.0, 101.0])
 
-        self.assertLessEqual(previous_rsi, 50.0)
-        self.assertGreater(current_rsi, 50.0)
+        self.assertLessEqual(previous_rsi, 60.0)
+        self.assertGreater(current_rsi, 60.0)
 
     def test_slot_accounting_reserves_pending_buy_orders(self):
         self.assertEqual(strategy.available_slots(open_positions=3), 2)

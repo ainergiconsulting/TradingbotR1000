@@ -166,7 +166,7 @@ class CorrectedBacktestSizingTests(unittest.TestCase):
         self.assertTrue(math.isclose(runner_eval.moving_average, strategy_eval.moving_average))
         self.assertTrue(math.isclose(runner_eval.lower_bollinger_band, strategy_eval.lower_bollinger_band))
         self.assertTrue(math.isclose(runner_eval.ranking_return, strategy_eval.ranking_return))
-        self.assertEqual(strategy.exit_decision(49.0, 51.0, 3).reason, "rsi_cross_above_50")
+        self.assertEqual(strategy.exit_decision(59.0, 61.0, 3).reason, "rsi_cross_above_60")
 
     def test_operational_strategy_and_broker_sizing_remain_unchanged(self) -> None:
         import automated_broker

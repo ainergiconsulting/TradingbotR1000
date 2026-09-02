@@ -20,8 +20,8 @@ STRATEGY_VERSION = "1.1"
 class StrategyParameters:
     universe: str = "Russell 1000 stocks"
     timeframe: str = "daily"
-    investable_capital_pct: float = 0.70
-    liquidity_reserve_pct: float = 0.30
+    investable_capital_pct: float = 1.00
+    liquidity_reserve_pct: float = 0.00
     position_allocation_pct: float = 0.20
     max_positions: int = 5
     leverage_allowed: bool = False
@@ -31,7 +31,7 @@ class StrategyParameters:
     buy_limit_multiplier: float = 0.97
     ranking_lookback_days: int = 150
     rsi_period: int = 2
-    rsi_exit_cross_level: float = 50.0
+    rsi_exit_cross_level: float = 60.0
     max_holding_trading_days: int = 10
 
 
@@ -194,7 +194,11 @@ def buy_limit_price(
 ) -> float:
     if signal_day_close <= 0:
         raise ValueError("signal_day_close must be positive")
-    return signal_day_close * params.buy_limit_multiplier
+    # IBKR requires stock limit prices to conform to the contract's minimum
+    # price increment. Russell 1000 names in this strategy trade above $1,
+    # where the standard US equity increment is $0.01. Keep the strategy's
+    # 3% discount while normalizing the generated limit to cents.
+    return round(signal_day_close * params.buy_limit_multiplier, 2)
 
 
 def position_allocation_value(
@@ -290,7 +294,7 @@ def exit_decision(
     if holding_trading_days < 0:
         raise ValueError("holding_trading_days must not be negative")
     if is_rsi_exit_cross(previous_rsi, current_rsi, params):
-        return ExitDecision(True, "rsi_cross_above_50", "next_market_open")
+        return ExitDecision(True, "rsi_cross_above_60", "next_market_open")
     if holding_trading_days >= params.max_holding_trading_days:
         return ExitDecision(True, "time_exit_10_trading_days", "next_market_open")
     return ExitDecision(False, None, None)

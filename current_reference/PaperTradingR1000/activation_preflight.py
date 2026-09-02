@@ -32,7 +32,11 @@ def _market_data_readiness() -> dict[str, Any]:
     market_data = load_daily_bar_data(universe["symbols"], daily_bars_dir)
     exclusions = [
         row for row in market_data["status_rows"]
-        if row.get("status") == "excluded" and row.get("reason") in CRITICAL_DATA_REASONS
+        if row.get("status") == "excluded"
+        and (
+            row.get("reason") in CRITICAL_DATA_REASONS
+            or str(row.get("reason") or "").startswith("market_data_read_error:")
+        )
     ]
     return {
         "universe_expected_symbols": len(universe["symbols"]),

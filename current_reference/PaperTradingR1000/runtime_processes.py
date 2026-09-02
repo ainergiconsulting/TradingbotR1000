@@ -38,6 +38,13 @@ def is_pid_running(pid: int | str | None) -> bool:
         return _windows_pid_running(value)
     try:
         os.kill(value, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # POSIX EPERM means the process exists but is owned by another user.
+        # Treat it as alive so cross-user diagnostics (for example SentinelX)
+        # do not report a false STOPPED state.
+        return True
     except OSError:
         return False
     return True

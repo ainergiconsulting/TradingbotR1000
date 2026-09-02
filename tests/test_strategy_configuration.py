@@ -15,8 +15,8 @@ class StrategyConfigurationTests(unittest.TestCase):
 
         self.assertEqual(snapshot["strategy_constants"]["universe"], "Russell 1000 stocks")
         self.assertEqual(snapshot["strategy_constants"]["strategy_version"], "1.1")
-        self.assertEqual(snapshot["strategy_constants"]["investable_capital_pct"], 0.7)
-        self.assertEqual(snapshot["strategy_constants"]["liquidity_reserve_pct"], 0.3)
+        self.assertEqual(snapshot["strategy_constants"]["investable_capital_pct"], 1.0)
+        self.assertEqual(snapshot["strategy_constants"]["liquidity_reserve_pct"], 0.0)
         self.assertEqual(snapshot["strategy_constants"]["position_allocation_pct"], 0.2)
         self.assertFalse(snapshot["strategy_constants"]["leverage_allowed"])
         self.assertNotIn("order_type", snapshot["order_execution_config"])

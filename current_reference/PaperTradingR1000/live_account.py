@@ -21,6 +21,8 @@ ACCOUNT_TAGS = {
     "TotalCashValue": "cash",
     "CashBalance": "cash",
     "AvailableFunds": "available_funds",
+    "LookAheadAvailableFunds": "lookahead_available_funds",
+    "AccruedCash": "accrued_cash",
     "BuyingPower": "buying_power",
     "GrossPositionValue": "gross_position_value",
 }
@@ -58,6 +60,39 @@ def _account_values(account_summary: list[dict[str, Any]]) -> dict[str, float]:
     return values
 
 
+def calculate_operational_buy_budget(
+    account_values: dict[str, Any],
+    *,
+    strategy_cap: float | None = None,
+    safety_margin_pct: float | None = None,
+) -> dict[str, float]:
+    """Return the no-leverage broker-authoritative BUY budget.
+
+    Current IBKR AvailableFunds is authoritative. LookAheadAvailableFunds is a
+    conservative forward-looking cap when present. NLV and BuyingPower are
+    intentionally excluded from spendable-capital calculation.
+    """
+    available = _parse_float(account_values.get("available_funds"))
+    lookahead = _parse_float(account_values.get("lookahead_available_funds"))
+    if available is None or available < 0:
+        raise LiveAccountError("available_funds_missing_or_invalid")
+    broker_available = min(available, lookahead) if lookahead is not None and lookahead >= 0 else available
+    margin_pct = cfg.CAPITAL_SAFETY_MARGIN_PCT if safety_margin_pct is None else float(safety_margin_pct)
+    if not 0 <= margin_pct < 1:
+        raise LiveAccountError("capital_safety_margin_pct_invalid")
+    capped = broker_available if strategy_cap is None else min(broker_available, max(0.0, float(strategy_cap)))
+    margin_value = capped * margin_pct
+    return {
+        "ibkr_available_funds": available,
+        "ibkr_lookahead_available_funds": lookahead if lookahead is not None else available,
+        "broker_available_capital": broker_available,
+        "strategy_cap": capped,
+        "capital_safety_margin_pct": margin_pct,
+        "capital_safety_margin_value": margin_value,
+        "operational_buy_budget": max(0.0, capped - margin_value),
+    }
+
+
 def _age_seconds(timestamp_utc: str, now: datetime | None = None) -> float:
     now = now or datetime.now(timezone.utc)
     try:
@@ -76,7 +111,7 @@ def validate_live_account_snapshot(snapshot: dict[str, Any], *, max_age_seconds:
     if cfg.PAPER_TRADING_REQUIRED and snapshot.get("account_mode") != "PAPER":
         raise LiveAccountError("paper_account_not_confirmed")
     values = snapshot.get("account_values") or {}
-    required = ("net_liquidation", "cash", "available_funds", "buying_power")
+    required = ("net_liquidation", "cash", "available_funds")
     missing = [key for key in required if _parse_float(values.get(key)) is None]
     if missing:
         raise LiveAccountError("live_account_values_missing:" + ",".join(missing))

@@ -7,7 +7,8 @@ import json
 import config as cfg
 from execution_history import load_latest_execution_history
 from gateway_status import collect_system_health
-from live_account import collect_live_account_context
+from investable_capital_control import evaluate
+from live_account import calculate_operational_buy_budget, collect_live_account_context
 from monitoring_core import collect_runtime_status, read_json
 from reconciliation import reconcile_local_state
 
@@ -16,6 +17,19 @@ def render_status() -> str:
     status = collect_runtime_status()
     health = status.get("runtime_health", {})
     scan = status.get("scan_report", {})
+
+    snapshot = collect_live_account_context(
+        client_id=cfg.TELEGRAM_CLIENT_ID,
+        readonly=True,
+    )
+    values = snapshot.get("account_values", {})
+    net_liquidation = float(values.get("net_liquidation") or 0.0)
+    capital_limit = evaluate(net_liquidation)
+    capital_budget = calculate_operational_buy_budget(
+        values,
+        strategy_cap=float(capital_limit.get("effective_investable_capital") or 0.0),
+    )
+
     return "\n".join(
         [
             f"{cfg.BOT_NAME} status",
@@ -23,6 +37,10 @@ def render_status() -> str:
             f"Last scan: {scan.get('timestamp_utc', 'none')}",
             f"Selected: {len(scan.get('selected_candidates', []))}",
             f"Orders planned: {len(scan.get('order_plans', []))}",
+            f"Account equity (NLV): ${net_liquidation:,.2f}",
+            f"IBKR available funds: ${capital_budget['ibkr_available_funds']:,.2f}",
+            f"Safety margin: {capital_budget['capital_safety_margin_pct'] * 100:.2f}%",
+            f"Operational buy budget: ${capital_budget['operational_buy_budget']:,.2f}",
         ]
     )
 
@@ -59,6 +77,11 @@ def render_portfolio() -> str:
     cash = float(values.get("cash") or 0.0)
     available_funds = float(values.get("available_funds") or 0.0)
     buying_power = float(values.get("buying_power") or 0.0)
+    capital_limit = evaluate(net_liquidation)
+    capital_budget = calculate_operational_buy_budget(
+        values,
+        strategy_cap=float(capital_limit.get("effective_investable_capital") or 0.0),
+    )
 
     total_invested = 0.0
     position_lines = []
@@ -102,10 +125,13 @@ def render_portfolio() -> str:
         f"Account mode: {snapshot.get('account_mode', 'UNKNOWN')}",
         f"Timestamp: {snapshot.get('timestamp_utc', '')}",
         "",
-        f"Net liquidation: ${net_liquidation:,.2f}",
+        f"Account equity (NLV): ${net_liquidation:,.2f}",
         f"Cash: ${cash:,.2f}",
-        f"Available funds: ${available_funds:,.2f}",
-        f"Buying power: ${buying_power:,.2f}",
+        f"IBKR available funds: ${available_funds:,.2f}",
+        f"Look-ahead available: ${capital_budget['ibkr_lookahead_available_funds']:,.2f}",
+        f"Safety margin: {capital_budget['capital_safety_margin_pct'] * 100:.2f}%",
+        f"Operational buy budget: ${capital_budget['operational_buy_budget']:,.2f}",
+        f"Buying power (informational): ${buying_power:,.2f}",
         "",
         f"Positions: {len(positions)}",
         f"Invested: ${total_invested:,.2f}",

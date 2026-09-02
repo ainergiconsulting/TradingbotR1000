@@ -68,7 +68,9 @@ def _buy_intents(scan: dict[str, Any], broker_context: dict[str, Any]) -> list[d
     intents = []
     for row in scan.get("order_plans", []) or []:
         symbol = str(row.get("symbol") or "").upper()
-        limit_price = _as_float(row.get("limit_price"))
+        # Normalize legacy/current scan reports to the standard US equity
+        # cent increment before sizing and constructing the IBKR order.
+        limit_price = round(_as_float(row.get("limit_price")), 2)
         allocation = _as_float(row.get("allocation_value"))
         quantity = floor(allocation / limit_price) if limit_price > 0 else 0
         notional = quantity * limit_price
@@ -154,6 +156,42 @@ def _broker_status_from_trade(trade: Any) -> dict[str, Any]:
     }
 
 
+def _trade_error_messages(trade: Any) -> list[str]:
+    messages = []
+    for entry in list(getattr(trade, "log", None) or []):
+        message = str(getattr(entry, "message", "") or "").strip()
+        if message and any(word in message.lower() for word in ("error", "reject", "cancel", "inactive")):
+            messages.append(message)
+    return messages
+
+
+def _wait_for_broker_ack(ib: Any, trade: Any, timeout_seconds: float = 8.0) -> dict[str, Any]:
+    """Wait for positive broker acknowledgement, not merely placeOrder()."""
+    import time
+
+    confirmed = {"PreSubmitted", "Submitted", "PartiallyFilled", "Filled"}
+    terminal_failure = {"Cancelled", "Inactive", "Rejected"}
+    deadline = time.monotonic() + max(0.0, timeout_seconds)
+    while True:
+        broker = _broker_status_from_trade(trade)
+        status = broker["broker_status"]
+        errors = _trade_error_messages(trade)
+        if errors:
+            broker["broker_status"] = "Rejected"
+            broker["rejection_reason"] = " | ".join(errors)[-1000:]
+            return broker
+        if status in confirmed:
+            return broker
+        if status in terminal_failure:
+            broker["rejection_reason"] = status
+            return broker
+        if time.monotonic() >= deadline:
+            broker["broker_status"] = "Unconfirmed"
+            broker["rejection_reason"] = f"submission_not_confirmed_by_ibkr:last_status={status}"
+            return broker
+        ib.sleep(0.25)
+
+
 def _build_ibkr_order(intent: dict[str, Any]) -> Any:
     side = str(intent.get("side") or "").upper()
     quantity = _as_float(intent.get("quantity"))
@@ -161,11 +199,11 @@ def _build_ibkr_order(intent: dict[str, Any]) -> Any:
     if order_type == "LIMIT":
         if LimitOrder is None:
             raise AutomatedBrokerError("ib_insync_limit_order_unavailable")
-        return LimitOrder(side, quantity, _as_float(intent.get("limit_price")))
+        return LimitOrder(side, quantity, _as_float(intent.get("limit_price")), tif="DAY")
     if order_type == "MARKET":
         if MarketOrder is None:
             raise AutomatedBrokerError("ib_insync_market_order_unavailable")
-        return MarketOrder(side, quantity)
+        return MarketOrder(side, quantity, tif="DAY")
     raise AutomatedBrokerError(f"unsupported_order_type:{order_type}")
 
 
@@ -218,9 +256,11 @@ def process_order_plan(
                 include_dry_run=not transmission_permitted,
             )
             if duplicate_reason:
-                row = upsert_order_intent(intent, broker_status="NotTransmitted", reason=duplicate_reason)
+                # Duplicate prevention is an execution decision, not a broker
+                # status transition. Do not overwrite previously persisted
+                # broker evidence (for example Submitted -> NotTransmitted).
                 duplicate_preventions.append({"symbol": intent["symbol"], "side": intent["side"], "reason": duplicate_reason})
-                persisted.append(row)
+                persisted.append({**intent, "broker_status": "DuplicatePrevented", "duplicate_reason": duplicate_reason})
                 continue
             if intent.get("rejection_reason"):
                 row = upsert_order_intent(intent, broker_status="Rejected", reason=intent["rejection_reason"])
@@ -243,11 +283,20 @@ def process_order_plan(
             pending_submissions.append((intent, row, trade))
 
         if pending_submissions:
-            ib.sleep(2)
             for intent, row, trade in pending_submissions:
-                broker = _broker_status_from_trade(trade)
+                broker = _wait_for_broker_ack(ib, trade)
                 update_order_status(order_key=row["order_key"], **broker)
-                submitted.append({"symbol": intent["symbol"], "side": intent["side"], **broker})
+                status = broker.get("broker_status")
+                if status in {"PreSubmitted", "Submitted", "PartiallyFilled", "Filled"}:
+                    submitted.append({"symbol": intent["symbol"], "side": intent["side"], **broker})
+                else:
+                    rejected.append(
+                        {
+                            "symbol": intent["symbol"],
+                            "side": intent["side"],
+                            "reason": broker.get("rejection_reason") or f"broker_submission_{status}",
+                        }
+                    )
     except Exception as exc:
         log("automated order processing failed", level="ERROR", extra={"error": repr(exc)})
         raise

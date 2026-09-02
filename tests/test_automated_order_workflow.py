@@ -113,16 +113,22 @@ class AutomatedOrderWorkflowTests(unittest.TestCase):
         self.assertEqual(report["duplicate_preventions"][0]["reason"], "current_ibkr_open_order")
         self.assertEqual(report["broker_orders_transmitted"], 0)
 
-    def test_persisted_submitted_order_prevents_same_signal_after_config_change(self):
+    def test_stale_persisted_submitted_order_does_not_block_without_live_broker_order(self):
         intent = automated_broker.build_intended_orders(self._scan(), self._broker_context())[0]
         row = automated_order_store.upsert_order_intent(intent, broker_status="Submitted")
         automated_order_store.update_order_status(order_key=row["order_key"], broker_status="Submitted", ibkr_order_id=77)
         changed_scan = self._scan()
         changed_scan["configuration_sha256"] = "different"
+        changed_intent = automated_broker.build_intended_orders(changed_scan, self._broker_context())[0]
 
-        report = automated_broker.process_order_plan(changed_scan, self._broker_context(), transmit=False)
+        reason = automated_order_store.find_duplicate(
+            changed_intent,
+            positions=[],
+            open_orders=[],
+            include_dry_run=False,
+        )
 
-        self.assertEqual(report["duplicate_preventions"][0]["reason"], "persisted_automated_order_same_signal")
+        self.assertEqual(reason, "")
 
     def test_invalid_manual_investable_capital_blocks_buy_intent_only(self):
         scan = self._scan()
@@ -145,7 +151,7 @@ class AutomatedOrderWorkflowTests(unittest.TestCase):
         self.assertEqual(manual_result["mode"], "MANUAL")
         self.assertEqual(manual_result["effective_investable_capital"], 50000.0)
         self.assertEqual(auto_result["mode"], "AUTO")
-        self.assertEqual(auto_result["effective_investable_capital"], 70000.0)
+        self.assertEqual(auto_result["effective_investable_capital"], 100000.0)
 
     def test_broker_status_transitions_are_persisted(self):
         intent = automated_broker.build_intended_orders(self._scan(), self._broker_context())[0]
@@ -233,14 +239,14 @@ class AutomatedOrderWorkflowTests(unittest.TestCase):
 
         next_cycle = strategy_scheduler.next_cycle_time(friday_after_cycle, {})
 
-        self.assertEqual(next_cycle.astimezone(strategy_scheduler.NY_TZ).strftime("%Y-%m-%d %H:%M"), "2026-07-27 09:35")
+        self.assertEqual(next_cycle.astimezone(strategy_scheduler.NY_TZ).strftime("%Y-%m-%d %H:%M"), "2026-07-27 09:28")
 
     def test_scheduler_skips_observed_market_holiday(self):
         before_independence_observed = datetime(2026, 7, 2, 20, 0, tzinfo=timezone.utc)
 
         next_cycle = strategy_scheduler.next_cycle_time(before_independence_observed, {})
 
-        self.assertEqual(next_cycle.astimezone(strategy_scheduler.NY_TZ).strftime("%Y-%m-%d %H:%M"), "2026-07-06 09:35")
+        self.assertEqual(next_cycle.astimezone(strategy_scheduler.NY_TZ).strftime("%Y-%m-%d %H:%M"), "2026-07-06 09:28")
 
     def test_live_account_validation_fails_closed_for_unknown_or_stale_evidence(self):
         snapshot = {

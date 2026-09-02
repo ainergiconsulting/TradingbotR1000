@@ -13,7 +13,7 @@ import csv
 import json
 import time
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable, Any
 from zoneinfo import ZoneInfo
@@ -24,7 +24,7 @@ from config_loader import ConfigError, ensure_runtime_ready, load_universe_confi
 from control_utils import read_blocked_symbols, read_ignored_symbols, stop_bot_requested
 from heartbeat_utils import write_heartbeat
 from investable_capital_control import evaluate as evaluate_investable_capital_control
-from live_account import LiveAccountError, collect_live_account_context
+from live_account import LiveAccountError, calculate_operational_buy_budget, collect_live_account_context
 from logger_utils import log
 from monitoring_io import atomic_write_json, utc_timestamp
 from quality_monitor import record_cycle as record_quality_monitor_cycle
@@ -230,6 +230,21 @@ def load_daily_bar_data(symbols: Iterable[str], daily_bars_dir: Path) -> dict[st
     }
 
 
+def expected_latest_completed_weekday(now_utc: datetime | None = None) -> str:
+    """Return the strict prior weekday expected at the 09:28 ET scan.
+
+    This is deliberately fail-closed. A market holiday on the immediately
+    preceding weekday will require fresh-data confirmation rather than allowing
+    an older dataset to trade silently.
+    """
+    now_utc = now_utc or datetime.now(timezone.utc)
+    current_et_date = now_utc.astimezone(ZoneInfo("America/New_York")).date()
+    expected = current_et_date - timedelta(days=1)
+    while expected.weekday() >= 5:
+        expected -= timedelta(days=1)
+    return expected.strftime("%Y%m%d")
+
+
 def _serialize_evaluation(item: EntryEvaluation) -> dict[str, Any]:
     return asdict(item) | {"is_candidate": item.is_candidate}
 
@@ -419,7 +434,18 @@ def run_scan_once(*, net_liquidation_value: float | None = None, require_univers
     live_values = broker_context["account_values"]
     if net_liquidation_value is None:
         net_liquidation_value = float(live_values["net_liquidation"])
+
     capital_control = evaluate_investable_capital_control(net_liquidation_value)
+
+    effective_investable_capital = float(
+        capital_control["effective_investable_capital"]
+    )
+    capital_budget = calculate_operational_buy_budget(
+        live_values,
+        strategy_cap=effective_investable_capital,
+    )
+    operational_buy_budget = float(capital_budget["operational_buy_budget"])
+
     if capital_control["compliance"] != "OK":
         log("investable capital compliance failure", level="ERROR", extra=capital_control)
     universe_config = load_universe_config()
@@ -434,10 +460,30 @@ def run_scan_once(*, net_liquidation_value: float | None = None, require_univers
         for row in market_data["status_rows"]
         if row.get("status") == "excluded"
     ]
+    refresh_status_path = cfg.STATE_DIR / "ibkr_market_data_refresh.json"
+    try:
+        current_refresh_status = json.loads(refresh_status_path.read_text(encoding="utf-8"))
+    except Exception:
+        current_refresh_status = {}
+    acceptable_unresolved_symbols = {
+        str(symbol)
+        for symbol in (current_refresh_status.get("acceptable_unresolved_symbols") or [])
+        if str(symbol)
+    }
+    market_data_read_errors = [
+        row for row in data_exclusions
+        if str(row.get("reason") or "").startswith("market_data_read_error:")
+    ]
+    if market_data_read_errors:
+        sample = ",".join(str(row.get("symbol") or "") for row in market_data_read_errors[:10])
+        raise EngineInputError(
+            f"market_data_read_failures:{len(market_data_read_errors)};sample={sample}"
+        )
     critical_market_data_exclusions = [
         row
         for row in data_exclusions
         if row.get("reason") in {"missing_market_data", "invalid_market_data_schema", "invalid_market_data_rows", "stale_market_data"}
+        and str(row.get("symbol") or "") not in acceptable_unresolved_symbols
     ]
     state = rebuild_and_save(
         list(broker_context.get("positions") or []),
@@ -454,7 +500,7 @@ def run_scan_once(*, net_liquidation_value: float | None = None, require_univers
         ignored_symbols=read_ignored_symbols(),
         pre_rejected_symbols=list(universe_records["exclusions"]) + data_exclusions,
         signal_dates=market_data["signal_dates"],
-        effective_investable_capital=capital_control["effective_investable_capital"],
+        effective_investable_capital=operational_buy_budget,
     )
     scan["universe_exclusions"] = list(universe_records["exclusions"])
     scan["configuration_sha256"] = snapshot["effective_configuration_sha256"]
@@ -464,11 +510,35 @@ def run_scan_once(*, net_liquidation_value: float | None = None, require_univers
         "order_execution_config": str(cfg.ORDER_EXECUTION_CONFIG_FILE),
     }
     scan["strategy_parameters_loaded"] = asdict(APPROVED_PARAMETERS)
+    capital_control = dict(capital_control)
+    capital_control["account_equity_nlv"] = float(net_liquidation_value)
+    capital_control.update(capital_budget)
     scan["investable_capital_control"] = capital_control
+    refresh_status = current_refresh_status
+    expected_market_data_date = str(
+        refresh_status.get("expected_latest_completed_session")
+        or expected_latest_completed_weekday()
+    )
+    latest_market_data_date = str(market_data.get("latest_date") or "")
+    refresh_state = str(refresh_status.get("status") or "").upper()
+    refresh_confirmed = refresh_state in {"OK", "DEGRADED_ACCEPTABLE"}
+    market_data_date_current = latest_market_data_date == expected_market_data_date
     scan["market_data_compliance"] = {
-        "compliance": "OK" if not critical_market_data_exclusions else "INVALID",
+        "compliance": "OK" if not critical_market_data_exclusions and market_data_date_current and refresh_confirmed else "INVALID",
         "critical_exclusion_count": len(critical_market_data_exclusions),
-        "reason": "market_data_not_current_or_invalid" if critical_market_data_exclusions else "",
+        "latest_date": latest_market_data_date,
+        "expected_latest_completed_session": expected_market_data_date,
+        "refresh_status": refresh_status.get("status", "MISSING"),
+        "refresh_source": refresh_status.get("source", ""),
+        "reason": (
+            "ibkr_market_data_refresh_not_confirmed"
+            if not refresh_confirmed
+            else "market_data_latest_date_not_current"
+            if not market_data_date_current
+            else "market_data_not_current_or_invalid"
+            if critical_market_data_exclusions
+            else ""
+        ),
     }
     scan["buy_submission_blocked"] = (
         capital_control["compliance"] != "OK"
@@ -611,7 +681,7 @@ def main(argv: list[str] | None = None) -> int:
         scan = run_scan_once(net_liquidation_value=net_liquidation_value, require_universe_file=True)
         print(json.dumps({"selected": len(scan["selected_candidates"]), "orders": len(scan["order_plans"])}, indent=2))
         return 0
-    except (AutomatedBrokerError, ConfigError, EngineInputError, LiveAccountError, ValueError) as exc:
+    except (AutomatedBrokerError, ConfigError, EngineInputError, LiveAccountError, OSError, ValueError) as exc:
         write_runtime_health(
             strategy_engine_state=HEALTH_FAILED,
             message=str(exc),

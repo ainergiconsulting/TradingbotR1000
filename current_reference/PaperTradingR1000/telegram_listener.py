@@ -6,6 +6,8 @@ import json
 import time
 import urllib.parse
 import urllib.request
+
+from telegram_gateway_control import GatewayControlError, restart_gateway
 from pathlib import Path
 from typing import Any
 
@@ -108,7 +110,12 @@ def main() -> int:
 
     token = _token(config)
 
+    pending_gateway_restarts = {}
+    gateway_restart_confirmation_seconds = 60
+
     offset = None
+    consecutive_errors = 0
+    max_consecutive_errors = 5
 
     # Discard updates that were already waiting before this listener started.
     # Only commands received after startup should be processed.
@@ -139,6 +146,7 @@ def main() -> int:
                 params["offset"] = offset
 
             response = _api_call(token, "getUpdates", params)
+            consecutive_errors = 0
 
             for update in response.get("result", []):
                 update_id = int(update.get("update_id", 0))
@@ -168,6 +176,62 @@ def main() -> int:
                     _send_message(token, chat_id_int, "Command not allowed.")
                     continue
 
+                if command == "gateway_restart":
+                    pending_gateway_restarts[chat_id_int] = time.monotonic()
+                    _send_message(
+                        token,
+                        chat_id_int,
+                        "IB Gateway restart requested. "
+                        "Confirm within 60 seconds with /confirm_gateway_restart",
+                    )
+                    continue
+
+                if command == "confirm_gateway_restart":
+                    requested_at = pending_gateway_restarts.pop(chat_id_int, None)
+
+                    if requested_at is None:
+                        _send_message(
+                            token,
+                            chat_id_int,
+                            "No pending IB Gateway restart request.",
+                        )
+                        continue
+
+                    if time.monotonic() - requested_at > gateway_restart_confirmation_seconds:
+                        _send_message(
+                            token,
+                            chat_id_int,
+                            "IB Gateway restart confirmation expired.",
+                        )
+                        continue
+
+                    _send_message(
+                        token,
+                        chat_id_int,
+                        "Restarting IB Gateway. Checking recovery...",
+                    )
+
+                    try:
+                        result = restart_gateway(requested_by=chat_id_int)
+                        if result.get("ok"):
+                            reply = (
+                                "IB Gateway restart completed.\n"
+                                f"Service: {result.get('service')}\n"
+                                f"API 4002: {result.get('api_4002')}"
+                            )
+                        else:
+                            reply = (
+                                "IB Gateway restarted but did not recover automatically.\n"
+                                f"Service: {result.get('service')}\n"
+                                f"API 4002: {result.get('api_4002')}\n"
+                                "Manual IBKR authentication may be required."
+                            )
+                    except GatewayControlError as error:
+                        reply = f"IB Gateway restart failed: {error}"
+
+                    _send_message(token, chat_id_int, reply)
+                    continue
+
                 try:
                     reply = render_command(command)
                 except Exception as error:
@@ -179,7 +243,19 @@ def main() -> int:
             print("Telegram listener stopped.")
             return 0
         except Exception as error:
-            print(f"Telegram listener error: {type(error).__name__}")
+            consecutive_errors += 1
+            print(
+                f"Telegram listener error: {type(error).__name__} "
+                f"({consecutive_errors}/{max_consecutive_errors})"
+            )
+
+            if consecutive_errors >= max_consecutive_errors:
+                print(
+                    "Telegram listener watchdog: too many consecutive errors; "
+                    "exiting so systemd can restart the service."
+                )
+                return 1
+
             time.sleep(RETRY_SECONDS)
 
 

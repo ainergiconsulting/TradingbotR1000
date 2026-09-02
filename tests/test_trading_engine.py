@@ -60,10 +60,10 @@ class TradingEngineTests(unittest.TestCase):
         )
 
         self.assertEqual([row["symbol"] for row in scan["selected_candidates"]], ["AAA"])
-        self.assertEqual(scan["order_plans"][0]["limit_price"], 116.39999999999999)
-        self.assertEqual(scan["investable_capital"], 70000.0)
-        self.assertEqual(scan["liquidity_reserve"], 30000.0)
-        self.assertEqual(scan["order_plans"][0]["allocation_value"], 14000.0)
+        self.assertEqual(scan["order_plans"][0]["limit_price"], 116.4)
+        self.assertEqual(scan["investable_capital"], 100000.0)
+        self.assertEqual(scan["liquidity_reserve"], 0.0)
+        self.assertEqual(scan["order_plans"][0]["allocation_value"], 20000.0)
         self.assertEqual(scan["order_submission"], "disabled")
 
     def test_scan_can_size_from_operator_investable_capital_override(self):
@@ -100,12 +100,12 @@ class TradingEngineTests(unittest.TestCase):
     def test_exit_signals_are_derived_from_rsi_or_holding_days(self):
         signals = trading_engine.evaluate_exit_signals(
             {
-                "AAA": {"previous_rsi2": 49, "current_rsi2": 51, "holding_trading_days": 3},
+                "AAA": {"previous_rsi2": 59, "current_rsi2": 61, "holding_trading_days": 3},
                 "BBB": {"previous_rsi2": 20, "current_rsi2": 30, "holding_trading_days": 10},
             }
         )
 
-        self.assertEqual([row["reason"] for row in signals], ["rsi_cross_above_50", "time_exit_10_trading_days"])
+        self.assertEqual([row["reason"] for row in signals], ["rsi_cross_above_60", "time_exit_10_trading_days"])
 
     def test_exit_signals_can_compute_rsi2_from_completed_daily_bars(self):
         signals = trading_engine.evaluate_exit_signals(
@@ -114,7 +114,7 @@ class TradingEngineTests(unittest.TestCase):
         )
 
         self.assertEqual(signals[0]["symbol"], "AAA")
-        self.assertEqual(signals[0]["reason"], "rsi_cross_above_50")
+        self.assertEqual(signals[0]["reason"], "rsi_cross_above_60")
 
     def test_scan_reports_short_histories_as_insufficient_history(self):
         scan = trading_engine.scan_from_closes(

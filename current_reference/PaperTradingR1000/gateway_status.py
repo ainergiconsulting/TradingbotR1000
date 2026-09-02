@@ -84,6 +84,8 @@ def runtime_execute_orders() -> tuple[bool, str]:
         runtime_state = str(runtime.get("trading_state", "") or "").upper()
         if runtime_state in {"TRADING_DISABLED", "TRADING_BLOCKED"}:
             return False, "runtime_health"
+        if runtime_state == "TRADING_ENABLED" and runtime.get("execute_orders") is True:
+            return True, "runtime_health"
     activation = read_json(cfg.STATE_DIR / "automated_activation_preflight.json", {})
     if isinstance(activation, dict) and activation.get("execute_orders") is True and activation.get("ok") is False:
         return False, "activation_preflight"

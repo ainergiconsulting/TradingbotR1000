@@ -24,7 +24,7 @@ ACTIVE_BROKER_STATUSES = {
     "PARTIALLYFILLED",
     "PARTIALLY_FILLED",
 }
-FINAL_BROKER_STATUSES = {"FILLED", "CANCELLED", "APICANCELLED", "INACTIVE", "REJECTED"}
+FINAL_BROKER_STATUSES = {"FILLED", "CANCELLED", "APICANCELLED", "INACTIVE", "REJECTED", "UNCONFIRMED"}
 
 
 def _parse_float(value: Any, default: float = 0.0) -> float:
@@ -249,7 +249,10 @@ def find_duplicate(
         status = existing.get("broker_status")
         if include_dry_run and status == "NotTransmitted":
             return "persisted_dry_run_intent"
-        if is_active_status(status) or str(status).upper() in {"FILLED", "PARTIALLYFILLED", "PARTIALLY_FILLED"}:
+        # Live broker positions/open orders above are authoritative for active
+        # orders. A locally persisted PendingSubmit/Submitted can be stale after
+        # disconnect/restart and must not block a fresh order by itself.
+        if str(status).replace("_", "").upper() in {"FILLED", "PARTIALLYFILLED"}:
             return "persisted_automated_order"
     for order in store.get("orders", []) or []:
         if not same_signal_order(order, intent):
@@ -257,7 +260,7 @@ def find_duplicate(
         status = order.get("broker_status")
         if include_dry_run and status == "NotTransmitted":
             return "persisted_dry_run_intent"
-        if is_active_status(status) or str(status).upper() in {"FILLED", "PARTIALLYFILLED", "PARTIALLY_FILLED"}:
+        if str(status).replace("_", "").upper() in {"FILLED", "PARTIALLYFILLED"}:
             return "persisted_automated_order_same_signal"
     return ""
 

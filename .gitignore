@@ -60,3 +60,16 @@ analytics/database/*
 # Large local datasets and backtest outputs
 data/
 backtests/
+# Local durable project history (not for GitHub)
+history/
+
+
+# Local safety backups created during maintenance
+*.bak
+*.bak.*
+*.bak_*
+*.preopen_backup
+*.pre100pct_backup
+*.pre_investable_capital_backup
+*.bak_watchdog_*
+universe_backups/
