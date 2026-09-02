@@ -1,0 +1,11 @@
+[Unit]
+Description=TradingBotR1000 Weekly Maintenance Window
+
+[Timer]
+OnCalendar=Sun *-*-* 02:00:00 UTC
+Persistent=true
+RandomizedDelaySec=0
+Unit=tradingbot-weekly-maintenance.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=TradingBotR1000 Weekly Controlled Ubuntu Maintenance
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/tradingbot-weekly-maintenance
+TimeoutStartSec=45min
