@@ -2,7 +2,9 @@
 Description=TradingBotR1000 Weekly Maintenance Window
 
 [Timer]
-OnCalendar=Sun *-*-* 02:00:00 UTC
+# IBKR invalidates weekly authentication tokens Sunday at 01:00 ET.
+# Run three hours later in New York local time; DST is handled automatically.
+OnCalendar=Sun *-*-* 04:00:00 America/New_York
 Persistent=true
 RandomizedDelaySec=0
 Unit=tradingbot-weekly-maintenance.service

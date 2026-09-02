@@ -11,9 +11,10 @@ log_history() {
   chown ibkradmin:ibkradmin "$HISTORY" || true
 }
 
-# Safety: this job is designed only for Sunday UTC.
-if [ "$(date -u +%u)" != "7" ] && [ "$DRY_RUN" != "1" ]; then
-  log_history "ABORTED outside Sunday UTC safety window."
+# Safety: this job is designed only for Sunday in America/New_York.
+NY_WEEKDAY="$(TZ=America/New_York date +%u)"
+if [ "$NY_WEEKDAY" != "7" ] && [ "$DRY_RUN" != "1" ]; then
+  log_history "ABORTED outside Sunday America/New_York safety window."
   exit 2
 fi
 
