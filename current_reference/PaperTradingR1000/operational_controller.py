@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, time as clock_time, timedelta, timezone
 from pathlib import Path
@@ -202,11 +203,40 @@ def _run_market_data_refresh_once() -> int:
     script = cfg.BASE_DIR / "ibkr_daily_bar_refresh.py"
     command = [sys.executable, str(script), "--pause", "0.25"]
     log("controller refreshing IBKR daily bars", extra={"command": command})
-    completed = subprocess.run(
-        command,
-        cwd=str(cfg.BASE_DIR),
-        text=True,
-        capture_output=True,
+
+    # A full Russell-1000 refresh normally takes many minutes.  Keep the
+    # controller heartbeat alive while subprocess.run() is blocked so the
+    # independent supervisor does not misclassify normal refresh work as a
+    # dead controller.  This heartbeat is controller liveness only; market
+    # data validity continues to be determined by the refresh status files.
+    heartbeat_stop = threading.Event()
+
+    def _refresh_heartbeat() -> None:
+        write_heartbeat(event="market_data_refresh", refresh_state="RUNNING")
+        while not heartbeat_stop.wait(60):
+            write_heartbeat(event="market_data_refresh", refresh_state="RUNNING")
+
+    heartbeat_thread = threading.Thread(
+        target=_refresh_heartbeat,
+        name="market-data-refresh-heartbeat",
+        daemon=True,
+    )
+    heartbeat_thread.start()
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(cfg.BASE_DIR),
+            text=True,
+            capture_output=True,
+        )
+    finally:
+        heartbeat_stop.set()
+        heartbeat_thread.join(timeout=2)
+
+    write_heartbeat(
+        event="market_data_refresh_complete",
+        refresh_state="OK" if completed.returncode == 0 else "FAILED",
+        exit_code=completed.returncode,
     )
     if completed.returncode != 0:
         log(

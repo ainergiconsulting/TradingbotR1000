@@ -46,6 +46,25 @@ class RuntimeRestartHardeningTests(unittest.TestCase):
         with patch("runtime_processes.os.kill", side_effect=ProcessLookupError):
             self.assertFalse(runtime_processes.is_pid_running(12345))
 
+    def test_market_data_refresh_keeps_controller_heartbeat_alive(self):
+        class Completed:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        def fake_run(*args, **kwargs):
+            time.sleep(0.05)
+            return Completed()
+
+        with patch.object(operational_controller.subprocess, "run", side_effect=fake_run), patch.object(
+            operational_controller, "write_heartbeat"
+        ) as heartbeat:
+            self.assertEqual(operational_controller._run_market_data_refresh_once(), 0)
+
+        events = [call.kwargs.get("event") for call in heartbeat.call_args_list]
+        self.assertIn("market_data_refresh", events)
+        self.assertIn("market_data_refresh_complete", events)
+
 
 if __name__ == "__main__":
     unittest.main()
