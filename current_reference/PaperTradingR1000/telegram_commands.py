@@ -72,6 +72,7 @@ def render_portfolio() -> str:
 
     values = snapshot.get("account_values", {})
     positions = snapshot.get("positions", [])
+    open_orders = snapshot.get("open_orders", [])
 
     net_liquidation = float(values.get("net_liquidation") or 0.0)
     cash = float(values.get("cash") or 0.0)
@@ -143,6 +144,44 @@ def render_portfolio() -> str:
     else:
         lines.append("")
         lines.append("No open broker positions.")
+
+    pending_orders = []
+    for row in open_orders:
+        status = str(row.get("status") or row.get("orderStatus", {}).get("status") or "UNKNOWN")
+        quantity = float(row.get("quantity") or row.get("order", {}).get("totalQuantity") or 0.0)
+        filled_raw = row.get("filled")
+        if filled_raw in (None, ""):
+            filled_raw = row.get("orderStatus", {}).get("filled")
+        remaining_raw = row.get("remaining")
+        if remaining_raw in (None, ""):
+            remaining_raw = row.get("orderStatus", {}).get("remaining")
+        filled = float(filled_raw or 0.0)
+        remaining = float(remaining_raw) if remaining_raw not in (None, "") else max(0.0, quantity - filled)
+        if remaining <= 0:
+            continue
+        pending_orders.append((row, status, quantity, filled, remaining))
+
+    lines.extend(["", f"Pending orders: {len(pending_orders)}"])
+    if pending_orders:
+        for row, status, quantity, filled, remaining in pending_orders:
+            symbol = str(row.get("symbol") or row.get("ibkrSymbol") or "UNKNOWN")
+            action = str(row.get("action") or row.get("order", {}).get("action") or "")
+            limit_raw = row.get("limit_price")
+            if limit_raw in (None, ""):
+                limit_raw = row.get("order", {}).get("lmtPrice")
+            limit_price = float(limit_raw or 0.0)
+            lines.extend(
+                [
+                    "",
+                    f"{symbol} {action}".strip(),
+                    f"Ordered: {quantity:g} @ ${limit_price:,.2f}",
+                    f"Filled: {filled:g}",
+                    f"Pending: {remaining:g}",
+                    f"IBKR status: {status}",
+                ]
+            )
+    else:
+        lines.append("No pending broker orders.")
 
     return "\n".join(lines)
 
