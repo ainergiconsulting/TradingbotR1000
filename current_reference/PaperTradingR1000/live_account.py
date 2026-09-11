@@ -68,21 +68,28 @@ def calculate_operational_buy_budget(
 ) -> dict[str, float]:
     """Return the no-leverage broker-authoritative BUY budget.
 
-    Current IBKR AvailableFunds is authoritative. LookAheadAvailableFunds is a
-    conservative forward-looking cap when present. NLV and BuyingPower are
-    intentionally excluded from spendable-capital calculation.
+    For the no-leverage policy, spendable BUY capital is bounded by actual
+    broker cash as well as AvailableFunds and LookAheadAvailableFunds. This is
+    essential once positions exist because IBKR AvailableFunds can exceed cash
+    by reflecting margin capacity. NLV and BuyingPower cannot increase budget.
     """
+    cash = _parse_float(account_values.get("cash"))
     available = _parse_float(account_values.get("available_funds"))
     lookahead = _parse_float(account_values.get("lookahead_available_funds"))
+    if cash is None or cash < 0:
+        raise LiveAccountError("cash_missing_or_invalid")
     if available is None or available < 0:
         raise LiveAccountError("available_funds_missing_or_invalid")
-    broker_available = min(available, lookahead) if lookahead is not None and lookahead >= 0 else available
+    broker_available = min(cash, available)
+    if lookahead is not None and lookahead >= 0:
+        broker_available = min(broker_available, lookahead)
     margin_pct = cfg.CAPITAL_SAFETY_MARGIN_PCT if safety_margin_pct is None else float(safety_margin_pct)
     if not 0 <= margin_pct < 1:
         raise LiveAccountError("capital_safety_margin_pct_invalid")
     capped = broker_available if strategy_cap is None else min(broker_available, max(0.0, float(strategy_cap)))
     margin_value = capped * margin_pct
     return {
+        "ibkr_cash": cash,
         "ibkr_available_funds": available,
         "ibkr_lookahead_available_funds": lookahead if lookahead is not None else available,
         "broker_available_capital": broker_available,

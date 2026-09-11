@@ -44,12 +44,19 @@ for account summary, positions, open orders, BUY/SELL orders, cancellations,
 liquidation actions, market-hours checks, and execution history where supported.
 BUY Limit and BUY Market use the R1000 manual watchlist.
 
-Option 13 controls investable capital:
+Option 13 controls the strategic capital ceiling:
 
-- `AUTO`: 70% of current live IBKR NLV.
-- `MANUAL`: operator-defined fixed USD amount, rejected if it exceeds current
-  live NLV.
+- `AUTO`: the strategy-configured percentage of current live IBKR NLV (currently 100%).
+- `MANUAL`: operator-defined fixed USD ceiling, rejected if it exceeds current live NLV.
 - Blank input leaves the current setting unchanged.
+
+This strategic ceiling is NOT the amount the bot may actually spend. Under the
+no-leverage policy, every BUY cycle computes a broker-authoritative Operational
+Buy Budget from the minimum of actual cash, IBKR AvailableFunds and
+LookAheadAvailableFunds, then applies the configured safety margin (currently
+1%). NLV and BuyingPower are informational/ceiling values and can never increase
+the spendable BUY budget. If cash or AvailableFunds is invalid/missing, BUY
+sizing fails closed.
 
 First-three-session automated PAPER quality reports are written to
 `current_reference\PaperTradingR1000\reports\quality_monitoring`.

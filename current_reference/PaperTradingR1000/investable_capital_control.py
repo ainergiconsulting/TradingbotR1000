@@ -1,8 +1,10 @@
 """Persistent investable-capital control for TradingbotR1000.
 
-This is an operational capital control, not a strategy-rule module.  AUTO keeps
-the approved 70% of live NLV calculation; MANUAL lets the operator choose the
-fixed investable-capital amount the strategy sizing step receives.
+This is an operational capital control, not a strategy-rule module. AUTO uses
+the strategy-configured capital percentage (currently 100% of live NLV) only as
+a strategic ceiling; the separate broker-authoritative BUY budget is additionally
+capped by actual cash/AvailableFunds/LookAheadAvailableFunds and safety margin.
+MANUAL lets the operator choose a lower fixed strategic ceiling.
 """
 
 from __future__ import annotations

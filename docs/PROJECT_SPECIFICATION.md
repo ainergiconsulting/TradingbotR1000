@@ -23,9 +23,9 @@ Source-defined strategy rules:
 - Universe: Russell 1000 stocks.
 - Timeframe: daily bars.
 - Total account equity: IBKR Net Liquidation Value (NLV).
-- Investable capital: 70% of NLV.
-- Liquidity reserve: 30% of NLV, reserved only to support temporary position replacement operations and not to increase overall exposure.
-- Position allocation: 20% of investable capital per position.
+- Strategic capital ceiling: 100% of NLV in AUTO mode.
+- Operational BUY budget: no-leverage minimum of actual cash, IBKR AvailableFunds and LookAheadAvailableFunds, further capped by the strategic ceiling and reduced by the configured safety margin (currently 1%).
+- Position allocation: 20% of the effective operational BUY budget per position, subject to remaining slots and broker-side cash validation.
 - Maximum positions: 5 simultaneous positions.
 - Leverage: none.
 - Entry trend filter: completed daily close above the 200-day moving average; the source example uses SMA(200).
@@ -125,8 +125,9 @@ strategy ranking factor.
 Adapt the order planner to support:
 
 - next-trading-day BUY limit orders at 97% of signal-day close;
-- position size equal to 20% of investable capital, where investable capital is 70% of NLV;
-- 30% NLV liquidity reserve that must not increase total portfolio exposure;
+- position size equal to 20% of the effective operational BUY budget;
+- AUTO strategic ceiling equal to 100% of NLV, but actual BUY capacity is cash-capped and no-leverage;
+- configured capital safety margin (currently 1%) is deducted from the cash-capped BUY base;
 - maximum five simultaneous positions;
 - exit-at-next-open behavior after RSI signal;
 - time exit after 10 trading days.
@@ -151,14 +152,16 @@ Good Friday.
 
 Control Console option 13 manages the operational investable-capital mode.
 
-- `AUTO`: effective investable capital is 70% of the current live IBKR NLV.
-- `MANUAL`: effective investable capital is the operator-defined fixed USD amount.
+- `AUTO`: strategic capital ceiling is 100% of the current live IBKR NLV.
+- `MANUAL`: strategic capital ceiling is the operator-defined fixed USD amount.
 
 The setting is persisted in `current_reference/PaperTradingR1000/state/investable_capital_control.json`.
 At every strategy cycle, the runtime validates a manual amount against the latest
 live NLV. If the manual amount exceeds live NLV, new BUY submissions are blocked
 and logged as a compliance failure; valid SELL processing remains available
-where the broker/account state allows it.
+where the broker/account state allows it. The strategic ceiling never authorizes
+margin use: the Operational Buy Budget is separately capped by actual cash,
+AvailableFunds and LookAheadAvailableFunds and reduced by the safety margin.
 
 ### First Three Automated Sessions Monitoring
 
@@ -219,9 +222,9 @@ Adapt tests to prove the approved strategy behavior without adding extra rules:
 - Bollinger settings;
 - 97% BUY limit calculation;
 - ranking only when candidates exceed slots;
-- 70% investable-capital calculation from NLV;
-- 30% liquidity reserve reporting;
-- 20% of investable capital allocation;
+- 100% AUTO strategic-capital ceiling from NLV;
+- cash/AvailableFunds/LookAheadAvailableFunds no-leverage cap plus safety margin;
+- 20% of effective operational BUY budget allocation;
 - five-position maximum;
 - RSI(2) crossing logic;
 - next-open exit scheduling;
@@ -235,8 +238,8 @@ Do not copy Tradingbot2607 strategy behavior that conflicts with the approved R1
 Do not add:
 
 - 10-day ranking persistence;
-- independent position sizing rules that bypass the 70% investable-capital and 20%-of-investable-capital sequence;
-- use of the 30% liquidity reserve to increase overall exposure;
+- independent position sizing rules that bypass the strategic ceiling, cash/AvailableFunds/LookAheadAvailableFunds no-leverage cap, safety margin, or 20%-allocation sequence;
+- use of BuyingPower or margin capacity to increase overall exposure beyond actual cash;
 - IWB holdings as a strategy requirement;
 - adjusted-price requirement;
 - specific broker order type or time-in-force as a strategy rule;
