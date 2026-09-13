@@ -16,6 +16,15 @@ from monitoring_io import atomic_write_json, utc_timestamp
 from runtime_processes import clear_pid, process_info, write_pid
 
 
+IBKR_DEGRADED_AFTER_CONSECUTIVE_FAILURES = 3
+IBKR_TRANSIENT_ERRORS = {
+    "TIMEOUTERROR",
+    "MONITORING_CLIENT_BUSY",
+    "RUNTIMEERROR",
+    "LIVE_PROBE_SKIPPED",
+}
+
+
 def _previous_supervisor_status() -> dict[str, object]:
     try:
         data = json.loads(cfg.SUPERVISOR_STATUS_FILE.read_text(encoding="utf-8-sig"))
@@ -42,13 +51,8 @@ def _ibkr_connection_status(
     if gateway == "ABSENT" or socket in {"CONNECTION_REFUSED", "CLOSED"}:
         return "DISCONNECTED"
 
-    if error in {
-        "TIMEOUTERROR",
-        "MONITORING_CLIENT_BUSY",
-        "RUNTIMEERROR",
-        "LIVE_PROBE_SKIPPED",
-    }:
-        return "UNKNOWN"
+    if error in IBKR_TRANSIENT_ERRORS:
+        return "TRANSIENT_FAILURE"
 
     if value == "DISCONNECTED":
         return "DISCONNECTED"
@@ -66,7 +70,7 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
         gateway_status = str(system_health.get("gateway_process_status") or "UNKNOWN")
         socket_status = str(system_health.get("api_socket_status") or "UNKNOWN")
         live_api_error = str(system_health.get("live_api_error") or "")
-        ibkr_status = _ibkr_connection_status(
+        raw_ibkr_status = _ibkr_connection_status(
             live_api_status,
             gateway_status=gateway_status,
             socket_status=socket_status,
@@ -74,13 +78,31 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
         )
     except Exception as error:
         live_api_status = "UNKNOWN"
-        ibkr_status = "UNKNOWN"
+        raw_ibkr_status = "TRANSIENT_FAILURE"
         gateway_status = "UNKNOWN"
         socket_status = "UNKNOWN"
         live_api_error = type(error).__name__
 
     previous_ibkr_status = str(previous.get("ibkr_connection_status") or "").upper()
     previous_heartbeat_fresh = previous.get("heartbeat_fresh")
+    previous_api_failures = int(previous.get("consecutive_api_failures") or 0)
+
+    if raw_ibkr_status == "CONNECTED":
+        consecutive_api_failures = 0
+        ibkr_status = "CONNECTED"
+    elif raw_ibkr_status == "DISCONNECTED":
+        consecutive_api_failures = previous_api_failures + 1
+        ibkr_status = "DISCONNECTED"
+    elif raw_ibkr_status == "TRANSIENT_FAILURE":
+        consecutive_api_failures = previous_api_failures + 1
+        ibkr_status = (
+            "DEGRADED"
+            if consecutive_api_failures >= IBKR_DEGRADED_AFTER_CONSECUTIVE_FAILURES
+            else "UNKNOWN"
+        )
+    else:
+        consecutive_api_failures = previous_api_failures + 1
+        ibkr_status = "UNKNOWN"
 
     if previous_heartbeat_fresh is True and fresh is False:
         write_alert(
@@ -93,7 +115,7 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
             "TradingbotR1000 heartbeat recovered.",
         )
 
-    if previous_ibkr_status == "CONNECTED" and ibkr_status == "DISCONNECTED":
+    if ibkr_status == "DISCONNECTED" and previous_ibkr_status not in {"", "DISCONNECTED"}:
         write_alert(
             "ibkr_disconnected",
             (
@@ -102,22 +124,44 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
                 f"error={live_api_error or 'none'}."
             ),
         )
-    elif previous_ibkr_status == "DISCONNECTED" and ibkr_status == "CONNECTED":
+    elif ibkr_status == "DEGRADED" and previous_ibkr_status != "DEGRADED":
+        write_alert(
+            "ibkr_degraded",
+            (
+                "IBKR live API is persistently unresponsive. "
+                f"Consecutive failures={consecutive_api_failures}; "
+                f"Gateway={gateway_status}, socket={socket_status}, "
+                f"error={live_api_error or 'none'}. Trading remains fail-closed."
+            ),
+        )
+    elif ibkr_status == "CONNECTED" and previous_ibkr_status in {"DISCONNECTED", "DEGRADED"}:
         write_alert(
             "ibkr_reconnected",
             "IBKR live API connection restored.",
         )
 
+    if not fresh:
+        overall_status = "STALE_HEARTBEAT"
+    elif ibkr_status == "CONNECTED":
+        overall_status = "OK"
+    elif ibkr_status == "DEGRADED":
+        overall_status = "DEGRADED_IBKR"
+    elif ibkr_status == "DISCONNECTED":
+        overall_status = "IBKR_DISCONNECTED"
+    else:
+        overall_status = "IBKR_UNKNOWN"
+
     payload = {
         "bot": cfg.BOT_NAME,
         "timestamp_utc": utc_timestamp(),
         "heartbeat_fresh": fresh,
-        "status": "OK" if fresh else "STALE_HEARTBEAT",
+        "status": overall_status,
         "ibkr_connection_status": ibkr_status,
         "live_api_status": live_api_status,
         "gateway_process_status": gateway_status,
         "api_socket_status": socket_status,
         "live_api_error": live_api_error,
+        "consecutive_api_failures": consecutive_api_failures,
     }
     atomic_write_json(cfg.SUPERVISOR_STATUS_FILE, payload)
     return payload

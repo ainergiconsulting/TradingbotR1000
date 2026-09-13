@@ -266,3 +266,6 @@ analytics/
 ```
 
 The exact module names may differ, but the layer responsibilities should remain aligned with Tradingbot2607.
+
+### IBKR connectivity state model
+Operational health distinguishes `CONNECTED`, short-lived `UNKNOWN`, persistent `DEGRADED`, and hard `DISCONNECTED`. Persistent transient API failures are promoted to `DEGRADED` after 3 consecutive supervisor cycles. Health status must not remain `OK` when IBKR is not connected. Transition alerts are de-duplicated by state: one alert on entry to `DEGRADED` or `DISCONNECTED`, and one recovery alert when `CONNECTED` is restored.

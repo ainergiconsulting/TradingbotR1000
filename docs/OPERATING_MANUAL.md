@@ -60,3 +60,6 @@ sizing fails closed.
 
 First-three-session automated PAPER quality reports are written to
 `current_reference\PaperTradingR1000\reports\quality_monitoring`.
+
+### IBKR health state and alerts
+The independent health supervisor treats a fresh controller heartbeat and a healthy IBKR API as separate requirements. `OK` requires both a fresh heartbeat and an IBKR `CONNECTED` state. A single/transient API probe failure is reported as `UNKNOWN`; after 3 consecutive transient failures the state becomes `DEGRADED` and one Telegram `ibkr_degraded` alert is sent. A hard socket/Gateway failure is `DISCONNECTED` and sends `ibkr_disconnected`. Recovery from `DEGRADED` or `DISCONNECTED` sends `ibkr_reconnected`. `DEGRADED` and `DISCONNECTED` are operationally fail-closed for trading.

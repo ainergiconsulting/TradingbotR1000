@@ -14,3 +14,9 @@
 - Prevents IBKR margin capacity from inflating BUY sizing after positions already exist.
 - Added regression coverage reproducing the live failure mode where cash was about $261k while AvailableFunds was about $813k.
 - Updated Operating Manual, IBKR Operations, Project Specification, code documentation, and Master History.
+
+## 2026-09-13 — IBKR health/alert state hardening
+- Persistent IBKR API timeouts are now promoted to `DEGRADED` after 3 consecutive supervisor cycles instead of remaining silently `UNKNOWN`.
+- A `DEGRADED` episode emits one `ibkr_degraded` Telegram alert; hard socket/Gateway loss emits `ibkr_disconnected`; recovery emits `ibkr_reconnected`.
+- Supervisor `status` is no longer `OK` merely because the heartbeat is fresh: it now reports `IBKR_UNKNOWN`, `DEGRADED_IBKR`, `IBKR_DISCONNECTED`, or `STALE_HEARTBEAT` when applicable.
+- Added focused regression tests for timeout degradation, hard disconnect and recovery transitions.
