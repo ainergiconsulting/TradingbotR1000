@@ -56,7 +56,17 @@ CREATE TABLE IF NOT EXISTS execution_notifications (
     price REAL,
     observed_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     telegram_notified_at_utc TEXT,
-    flex_confirmed_at_utc TEXT
+    flex_confirmed_at_utc TEXT,
+    execution_time TEXT,
+    notification_status TEXT NOT NULL DEFAULT 'PENDING'
+);
+CREATE TABLE IF NOT EXISTS flex_coverage (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    coverage_from TEXT,
+    coverage_through TEXT,
+    generated_at TEXT,
+    source_file TEXT,
+    updated_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 """
 
@@ -85,7 +95,6 @@ def _source_key(a: dict[str, str]) -> str:
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
-    # Create base tables first, then migrate older ledgers in place.
     conn.execute("""CREATE TABLE IF NOT EXISTS flex_executions (
         id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL UNIQUE,
         trade_id TEXT, transaction_id TEXT, account_id TEXT, trade_date TEXT,
@@ -101,15 +110,12 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
         conn.execute("ALTER TABLE flex_executions ADD COLUMN ib_exec_id TEXT")
     if "ib_order_id" not in cols:
         conn.execute("ALTER TABLE flex_executions ADD COLUMN ib_order_id TEXT")
-    # Rebuild the early claim-only notification table if necessary. It was
-    # never populated in production, so no delivered-notification state is lost.
-    ncols = {row[1] for row in conn.execute("PRAGMA table_info(execution_notifications)")}
-    if ncols and "first_seen_source" not in ncols:
-        count = conn.execute("SELECT COUNT(*) FROM execution_notifications").fetchone()[0]
-        if count:
-            raise RuntimeError("legacy execution_notifications contains rows; manual migration required")
-        conn.execute("DROP TABLE execution_notifications")
     conn.executescript(SCHEMA)
+    ncols = {row[1] for row in conn.execute("PRAGMA table_info(execution_notifications)")}
+    if "execution_time" not in ncols:
+        conn.execute("ALTER TABLE execution_notifications ADD COLUMN execution_time TEXT")
+    if "notification_status" not in ncols:
+        conn.execute("ALTER TABLE execution_notifications ADD COLUMN notification_status TEXT NOT NULL DEFAULT 'PENDING'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_flex_exec_ib_exec_id ON flex_executions(ib_exec_id)")
     conn.commit()
     return conn
@@ -242,22 +248,36 @@ def latest(limit: int = 20, path: Path = DB_PATH) -> list[dict]:
     return [dict(zip(keys, row)) for row in rows]
 
 
-def pnl_summary(path: Path = DB_PATH) -> dict:
+def pnl_summary(path: Path = DB_PATH, start_date: str | None = None) -> dict:
+    if start_date is None:
+        try:
+            import config as cfg
+            start_date = cfg.PAPER_PNL_START_DATE
+        except Exception:
+            start_date = "2026-09-01"
+    start_key = str(start_date).replace("-", "")
     with connect(path) as conn:
-        total, first_date, last_date = conn.execute(
-            "SELECT COALESCE(SUM(realized_pnl),0), MIN(trade_date), MAX(trade_date) FROM flex_executions"
+        total, first_trade, last_trade = conn.execute(
+            "SELECT COALESCE(SUM(realized_pnl),0), MIN(trade_date), MAX(trade_date) FROM flex_executions WHERE trade_date>=?",
+            (start_key,),
         ).fetchone()
+        commission = conn.execute(
+            "SELECT COALESCE(SUM(commission),0) FROM flex_executions WHERE trade_date>=?", (start_key,)
+        ).fetchone()[0]
         per_symbol = [
             {"symbol": s, "realized_pnl": pnl}
             for s, pnl in conn.execute(
                 """SELECT symbol, COALESCE(SUM(realized_pnl),0)
-                   FROM flex_executions GROUP BY symbol ORDER BY symbol"""
+                   FROM flex_executions WHERE trade_date>=? GROUP BY symbol ORDER BY symbol""",
+                (start_key,),
             ).fetchall()
         ]
     return {
-        "cumulative_realized_pnl": float(total or 0),
-        "cumulative_since": first_date,
-        "through": last_date,
+        "realized_pnl_since_start": float(total or 0),
+        "commissions_since_start": float(commission or 0),
+        "pnl_start_date": start_date,
+        "first_imported_trade_on_or_after_start": first_trade,
+        "through": last_trade,
         "per_symbol": per_symbol,
     }
 

@@ -190,11 +190,11 @@ async def account():
     # Cumulative realized P&L comes from the durable official Flex fill ledger.
     # IBKR accountSummary RealizedPnL is deliberately not labelled cumulative.
     ledger = ledger_pnl_summary()
-    cumulative_realized = ledger.get("cumulative_realized_pnl")
+    realized_since_start = ledger.get("realized_pnl_since_start")
     unrealized = values.get("unrealized_pnl")
     combined = (
-        float(cumulative_realized) + float(unrealized)
-        if cumulative_realized is not None and unrealized is not None
+        float(realized_since_start) + float(unrealized)
+        if realized_since_start is not None and unrealized is not None
         else None
     )
 
@@ -207,12 +207,12 @@ async def account():
         "cash": item("cash"),
         "available_funds": item("available_funds"),
         "buying_power": item("buying_power"),
-        "cumulative_realized_pnl": {"value": cumulative_realized, "currency": "USD"},
+        "realized_pnl_since_start": {"value": realized_since_start, "currency": "USD"},
         "current_unrealized_pnl": item("unrealized_pnl"),
         "combined_pnl": {"value": combined, "currency": "USD" if combined is not None else None},
-        "cumulative_since": ledger.get("cumulative_since"),
+        "pnl_start_date": ledger.get("pnl_start_date"),
         "pnl_through": ledger.get("through"),
-        "pnl_history_status": "PARTIAL_HISTORY" if ledger.get("cumulative_since") else "NO_HISTORY",
+        "pnl_history_status": "PARTIAL_HISTORY" if ledger.get("through") else "NO_HISTORY",
         "snapshot_timestamp_utc": snapshot.get("timestamp_utc"),
     }
 
@@ -242,7 +242,7 @@ async def executions(limit: int = Query(20, ge=1, le=100)):
 @app.get("/api/pnl")
 def pnl():
     result = ledger_pnl_summary()
-    result["history_status"] = "PARTIAL_HISTORY" if result.get("cumulative_since") else "NO_HISTORY"
+    result["history_status"] = "PARTIAL_HISTORY" if result.get("through") else "NO_HISTORY"
     result["source"] = "IBKR_FLEX_TRADE_CONFIRMATION"
     return _plain(result)
 
