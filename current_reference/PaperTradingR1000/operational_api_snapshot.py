@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover - direct script execution support.
 
 try:
     ensure_current_event_loop()
-    from ib_insync import IB
+    from ib_insync import IB, ExecutionFilter
 except Exception:  # pragma: no cover - depends on local runtime environment.
     IB = object
 
@@ -177,13 +177,57 @@ def snapshot_open_orders(ib: IB) -> list[dict[str, Any]]:
     return rows
 
 
-def snapshot_executions(ib: IB) -> list[dict[str, Any]]:
+def snapshot_executions(ib: IB, client_ids: list[int] | tuple[int, ...] | None = None) -> list[dict[str, Any]]:
+    """Collect broker executions across known API client IDs and deduplicate by execId."""
+    if client_ids is None:
+        try:
+            import config as cfg
+            client_ids = tuple(dict.fromkeys([
+                cfg.CLIENT_ID,
+                cfg.MANUAL_CLIENT_ID,
+                cfg.RECONCILIATION_CLIENT_ID,
+                cfg.REMOTE_CONTROL_CLIENT_ID,
+                cfg.TELEGRAM_CLIENT_ID,
+                getattr(cfg, "MOBILE_SNAPSHOT_CLIENT_ID", 1006),
+            ]))
+        except Exception:
+            client_ids = ()
+
+    fills = []
+    seen_exec_ids = set()
+    filters = []
+    for client_id in client_ids or ():
+        try:
+            f = ExecutionFilter()
+            f.clientId = int(client_id)
+            filters.append(f)
+        except Exception:
+            continue
+    if not filters:
+        filters = [None]
+
+    for exec_filter in filters:
+        try:
+            requested = ib.reqExecutions(exec_filter) if exec_filter is not None else ib.reqExecutions()
+        except Exception:
+            requested = []
+        for fill in requested or []:
+            execution = getattr(fill, "execution", None)
+            exec_id = str(getattr(execution, "execId", "") or "")
+            key = exec_id or repr((
+                getattr(execution, "orderId", None),
+                getattr(execution, "permId", None),
+                getattr(execution, "time", None),
+                getattr(execution, "shares", None),
+                getattr(execution, "price", None),
+            ))
+            if key in seen_exec_ids:
+                continue
+            seen_exec_ids.add(key)
+            fills.append(fill)
+
     rows = []
-    try:
-        ib.reqExecutions()
-    except Exception:
-        pass
-    for fill in getattr(ib, "fills", lambda: [])() or []:
+    for fill in fills:
         contract = getattr(fill, "contract", None)
         execution = getattr(fill, "execution", None)
         commission = getattr(fill, "commissionReport", None)

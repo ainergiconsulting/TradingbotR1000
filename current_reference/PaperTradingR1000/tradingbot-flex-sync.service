@@ -1,0 +1,11 @@
+[Unit]
+Description=TradingbotR1000 IBKR Flex execution sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ibkradmin
+WorkingDirectory=/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000
+ExecStart=/home/ibkradmin/trading/venv/bin/python /home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000/flex_sync.py
+Nice=10

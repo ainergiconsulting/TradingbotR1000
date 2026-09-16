@@ -392,6 +392,8 @@ def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None)
                 rejected_or_skipped_count,
                 broker_submitted_count,
                 effective_investable_capital,
+                automated_execution.get("intended_orders", []) or [],
+                automated_execution.get("submitted_orders", []) or [],
             )
             restarts = 0
             continue

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f172a">
+<link rel="manifest" href="/manifest.webmanifest?v=20260915g3">
+<link rel="icon" href="/static/icon-192.png">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
+<link rel="stylesheet" href="/static/app.css?v=20260915g3">
+<title>TradingBotR1000</title>
+</head>
+<body>
+<header><strong>TradingBotR1000</strong><span id="mode">CHECKING</span></header>
+<main>
+<section><h2>Status</h2><div id="statusGrid"></div></section>
+<nav id="mainNav" hidden>
+<button data-view="account">1. Account Summary</button>
+<button data-view="positions">2. Positions</button>
+<button data-view="orders">3. Open Orders</button>
+<button data-view="buy-limit">4. BUY Limit</button>
+<button data-view="sell-limit">5. SELL Limit</button>
+<button data-view="buy-market">6. BUY Market</button>
+<button data-view="sell-market">7. SELL Market</button>
+<button data-view="cancel-selected">8. Cancel Selected</button>
+<button data-view="cancel-all">9. Cancel All</button>
+<button data-view="liquidate-selected">10. Liquidate Position</button>
+<button data-view="emergency">11. Emergency Liquidate All</button>
+<button data-view="market-hours">12. Market/Liquid Hours</button>
+<button data-view="capital">13. Investable Capital</button>
+<button data-view="executions">14. Execution History</button>
+</nav>
+<section><div id="content">Loading...</div></section>
+</main>
+<script src="/static/app.js?v=20260915g3"></script>
+</body>
+</html>

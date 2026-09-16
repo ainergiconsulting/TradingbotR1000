@@ -1,0 +1,375 @@
+from __future__ import annotations
+
+import os
+import socket
+import asyncio
+import json
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from ib_insync import IB
+
+import config as cfg
+import manual_trading_core as core
+import mobile_auth as auth
+from live_account import collect_live_account_context
+from flex_execution_ledger import latest as ledger_latest, pnl_summary as ledger_pnl_summary
+from mobile_r1000_selector import get_r1000_symbol, load_r1000_universe, search_r1000
+
+BASE = Path(__file__).resolve().parent
+PWA = BASE / "mobile_pwa"
+IB_CLIENT: IB | None = None
+BROKER_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mobile-ibkr")
+MUTATIONS_ENABLED = os.getenv("MOBILE_MANUAL_MUTATIONS_ENABLED", "0") == "1"
+
+
+class WebAuthnFinish(BaseModel):
+    challenge_id: str
+    credential: dict
+
+
+
+def _plain(value):
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items() if k not in {"contract", "trade"}}
+    if isinstance(value, (list, tuple)):
+        return [_plain(v) for v in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
+
+
+def _socket_ok() -> bool:
+    try:
+        with socket.create_connection((cfg.HOST, cfg.PORT), timeout=1.0):
+            return True
+    except Exception:
+        return False
+
+
+async def _broker_call(function, *args, **kwargs):
+    loop = asyncio.get_running_loop()
+    def work():
+        global IB_CLIENT
+        if IB_CLIENT is None:
+            worker_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(worker_loop)
+            IB_CLIENT = IB()
+        if not IB_CLIENT.isConnected():
+            core.connect_manual_console(IB_CLIENT)
+        return function(IB_CLIENT, *args, **kwargs)
+    try:
+        return await loop.run_in_executor(BROKER_EXECUTOR, work)
+    except core.ManualControlError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"IBKR unavailable: {type(exc).__name__}") from exc
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    BROKER_EXECUTOR.shutdown(wait=False, cancel_futures=True)
+
+
+app = FastAPI(title="TradingBotR1000 Mobile Manual Console", docs_url=None, redoc_url=None, lifespan=lifespan)
+app.mount("/static", StaticFiles(directory=PWA), name="static")
+
+
+@app.get("/api/auth/state")
+def auth_state(request: Request):
+    authenticated = True
+    try:
+        auth.require_session(request)
+    except HTTPException:
+        authenticated = False
+    return {"authenticated": authenticated, "passkey_enrolled": auth.credential_count() > 0,
+            "rp_id": auth.RP_ID, "mutations_enabled": MUTATIONS_ENABLED}
+
+
+@app.post("/api/auth/register/options")
+def auth_register_options():
+    return auth.registration_options()
+
+
+@app.post("/api/auth/register/finish")
+def auth_register_finish(payload: WebAuthnFinish, response: Response):
+    auth.finish_registration(payload.challenge_id, payload.credential)
+    auth.new_session(response)
+    return {"ok": True}
+
+
+@app.post("/api/auth/login/options")
+def auth_login_options():
+    return auth.authentication_options("login")
+
+
+@app.post("/api/auth/login/finish")
+def auth_login_finish(payload: WebAuthnFinish, response: Response):
+    auth.finish_authentication(payload.challenge_id, payload.credential, "login")
+    auth.new_session(response)
+    return {"ok": True}
+
+
+@app.post("/api/auth/activity")
+def auth_activity(request: Request):
+    auth.record_physical_activity(request)
+    return {"ok": True}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request, response: Response):
+    auth.logout(request, response)
+    return {"ok": True}
+
+
+@app.middleware("http")
+async def protect_api(request: Request, call_next):
+    path = request.url.path
+    public = path.startswith("/api/auth/") or not path.startswith("/api/")
+    if not public:
+        try:
+            auth.require_session(request)
+        except HTTPException as exc:
+            return Response(content=json.dumps({"detail": exc.detail}), status_code=exc.status_code, media_type="application/json")
+    return await call_next(request)
+
+
+@app.get("/")
+def home():
+    return FileResponse(PWA / "index.html")
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(PWA / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(PWA / "sw.js", media_type="application/javascript")
+
+
+@app.get("/api/status")
+async def status():
+    socket_status = _socket_ok()
+    if socket_status and (IB_CLIENT is None or not IB_CLIENT.isConnected()):
+        try:
+            await _broker_call(lambda ib: ib.isConnected())
+        except HTTPException:
+            pass
+    connected = bool(IB_CLIENT is not None and IB_CLIENT.isConnected())
+    accounts = IB_CLIENT.managedAccounts() if connected else []
+    account_id = accounts[0] if accounts else None
+    paper = bool(account_id and str(account_id).upper().startswith("DU"))
+    return {"gateway_socket": socket_status, "ibkr_api": connected,
+            "manual_client_id": core.MANUAL_CLIENT_ID,
+            "account_mode": "PAPER" if paper else ("LIVE" if account_id else "UNKNOWN"),
+            "trading": "READ_ONLY_BUILD" if not MUTATIONS_ENABLED else "MUTATIONS_ENABLED",
+            "mutations_enabled": MUTATIONS_ENABLED}
+
+
+def _canonical_mobile_snapshot():
+    return collect_live_account_context(
+        client_id=cfg.MOBILE_SNAPSHOT_CLIENT_ID,
+        readonly=True,
+    )
+
+
+@app.get("/api/account")
+async def account():
+    snapshot = await asyncio.get_running_loop().run_in_executor(
+        BROKER_EXECUTOR, _canonical_mobile_snapshot
+    )
+    values = snapshot.get("account_values", {})
+    # Cumulative realized P&L comes from the durable official Flex fill ledger.
+    # IBKR accountSummary RealizedPnL is deliberately not labelled cumulative.
+    ledger = ledger_pnl_summary()
+    cumulative_realized = ledger.get("cumulative_realized_pnl")
+    unrealized = values.get("unrealized_pnl")
+    combined = (
+        float(cumulative_realized) + float(unrealized)
+        if cumulative_realized is not None and unrealized is not None
+        else None
+    )
+
+    def item(key):
+        value = values.get(key)
+        return {"value": value, "currency": "USD" if value is not None else None}
+
+    return {
+        "net_liquidation": item("net_liquidation"),
+        "cash": item("cash"),
+        "available_funds": item("available_funds"),
+        "buying_power": item("buying_power"),
+        "cumulative_realized_pnl": {"value": cumulative_realized, "currency": "USD"},
+        "current_unrealized_pnl": item("unrealized_pnl"),
+        "combined_pnl": {"value": combined, "currency": "USD" if combined is not None else None},
+        "cumulative_since": ledger.get("cumulative_since"),
+        "pnl_through": ledger.get("through"),
+        "pnl_history_status": "PARTIAL_HISTORY" if ledger.get("cumulative_since") else "NO_HISTORY",
+        "snapshot_timestamp_utc": snapshot.get("timestamp_utc"),
+    }
+
+
+@app.get("/api/positions")
+async def positions():
+    snapshot = await asyncio.get_running_loop().run_in_executor(
+        BROKER_EXECUTOR, _canonical_mobile_snapshot
+    )
+    return _plain(snapshot.get("positions", []))
+
+
+@app.get("/api/orders")
+async def orders():
+    snapshot = await asyncio.get_running_loop().run_in_executor(
+        BROKER_EXECUTOR, _canonical_mobile_snapshot
+    )
+    return _plain(snapshot.get("open_orders", []))
+
+
+@app.get("/api/executions")
+async def executions(limit: int = Query(20, ge=1, le=100)):
+    # Durable IBKR Flex ledger, not the transient current Gateway session.
+    return _plain(ledger_latest(limit=limit))
+
+
+@app.get("/api/pnl")
+def pnl():
+    result = ledger_pnl_summary()
+    result["history_status"] = "PARTIAL_HISTORY" if result.get("cumulative_since") else "NO_HISTORY"
+    result["source"] = "IBKR_FLEX_TRADE_CONFIRMATION"
+    return _plain(result)
+
+
+@app.get("/api/r1000")
+def r1000(q: str = "", limit: int = Query(30, ge=1, le=100)):
+    return search_r1000(q, limit=limit)
+
+
+@app.get("/api/r1000-meta")
+def r1000_meta():
+    return {"count": len(load_r1000_universe()), "source": "IWB_holdings.csv"}
+
+
+@app.get("/api/r1000/{symbol}")
+def r1000_symbol(symbol: str):
+    item = get_r1000_symbol(symbol)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Symbol is not in current R1000 universe")
+    return item
+
+
+@app.get("/api/market/{symbol}")
+async def market(symbol: str):
+    item = get_r1000_symbol(symbol)
+    if item is None:
+        raise HTTPException(status_code=404, detail="BUY symbol is not in current R1000 universe")
+    def market_status(ib):
+        contract = core.qualify_stock(ib, item["ibkr_symbol"])
+        return core.get_market_hours_status(ib, contract)
+    return _plain(await _broker_call(market_status))
+
+
+@app.get("/api/order-prepare/{action}/{order_type}/{symbol}")
+async def order_prepare(action: str, order_type: str, symbol: str):
+    action = action.strip().upper()
+    order_type = order_type.strip().upper()
+    if action not in {"BUY", "SELL"} or order_type not in {"LIMIT", "MARKET"}:
+        raise HTTPException(status_code=400, detail="Invalid action or order type")
+
+    def prepare(ib):
+        if action == "BUY":
+            item = get_r1000_symbol(symbol)
+            if item is None:
+                raise core.ManualControlError("BUY symbol is not in current R1000 universe")
+            contract = core.qualify_stock(ib, item["ibkr_symbol"], "USD")
+        else:
+            owned = [p for p in core.get_positions(ib) if float(p.get("quantity") or 0) > 0]
+            position = next((p for p in owned if str(p.get("symbol") or "").upper() == symbol.upper()), None)
+            if position is None:
+                raise core.ManualControlError("SELL symbol is not a currently owned long position")
+            contract = core.qualify_manual_contract(ib, position["contract"])
+        held = max(0.0, core.current_broker_position(ib, contract, refresh=True))
+        price_info = core.get_current_market_price(ib, contract)
+        current_price = price_info.get("price")
+        suggested = None
+        if order_type == "LIMIT":
+            suggested = core.suggest_buy_limit_price(price_info) if action == "BUY" else current_price
+        hours = core.get_market_hours_status(ib, contract)
+        return {
+            "action": action,
+            "order_type": order_type,
+            "contract": core.contract_identity(contract),
+            "current_price": current_price,
+            "price_source": price_info.get("source"),
+            "suggested_limit_price": suggested,
+            "held_quantity": held if action == "SELL" else None,
+            "allow_all": action == "SELL",
+            "liquid_hours": hours,
+            "market_order_warning": order_type == "MARKET",
+            "submission_enabled": MUTATIONS_ENABLED,
+        }
+    try:
+        return _plain(await _broker_call(prepare))
+    except core.ManualControlError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.get("/api/market-hours")
+async def market_hours_all():
+    def read(ib):
+        result = []
+        for position in core.get_positions(ib):
+            try:
+                status = core.get_market_hours_status(ib, position["contract"])
+                result.append({"symbol": position["symbol"], **status})
+            except Exception as exc:
+                result.append({"symbol": position["symbol"], "liquid_open": None, "detail": type(exc).__name__})
+        return result
+    return _plain(await _broker_call(read))
+
+
+@app.get("/api/investable-capital")
+async def investable_capital():
+    def read(ib):
+        summary = core.get_account_summary(ib)
+        nlv = summary["net_liquidation"]["value"]
+        if nlv is None:
+            raise core.ManualControlError("IBKR NetLiquidation is unavailable")
+        return core.evaluate_investable_capital_control(nlv)
+    try:
+        return _plain(await _broker_call(read))
+    except core.ManualControlError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.get("/api/mobile-capabilities")
+def mobile_capabilities():
+    return {
+        "account_summary": True,
+        "positions": True,
+        "open_orders": True,
+        "buy_limit": True,
+        "sell_limit": True,
+        "buy_market": True,
+        "sell_market": True,
+        "cancel_selected": False,
+        "cancel_all": False,
+        "liquidate_selected": False,
+        "emergency_liquidate_all": False,
+        "market_liquid_hours": True,
+        "investable_capital_control": "READ_ONLY",
+        "execution_history": True,
+        "broker_mutations": MUTATIONS_ENABLED,
+    }
+
+
+@app.post("/api/{path:path}")
+def mutations_locked(path: str):
+    raise HTTPException(status_code=423, detail="Broker mutations locked until authenticated mobile API is enabled")

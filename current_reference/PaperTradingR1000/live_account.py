@@ -25,6 +25,8 @@ ACCOUNT_TAGS = {
     "AccruedCash": "accrued_cash",
     "BuyingPower": "buying_power",
     "GrossPositionValue": "gross_position_value",
+    "UnrealizedPnL": "unrealized_pnl",
+    "RealizedPnL": "realized_pnl",
 }
 
 

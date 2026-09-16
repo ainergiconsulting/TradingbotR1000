@@ -1,0 +1,12 @@
+[Unit]
+Description=Run TradingbotR1000 IBKR Flex execution sync periodically
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+RandomizedDelaySec=60
+Unit=tradingbot-flex-sync.service
+
+[Install]
+WantedBy=timers.target

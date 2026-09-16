@@ -25,7 +25,7 @@ import xml.etree.ElementTree as ET
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = BASE_DIR / "flex_config.json"
 DEFAULT_BASE_URL = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService"
-USER_AGENT = "TradingbotR1000-FlexClient/1.0"
+USER_AGENT = "Python/3.12"
 
 
 class FlexConfigError(RuntimeError):
