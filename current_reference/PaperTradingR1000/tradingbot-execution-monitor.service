@@ -1,0 +1,15 @@
+[Unit]
+Description=TradingbotR1000 read-only IBKR execution monitor
+After=network.target tradingbot-ibgateway.service
+Wants=tradingbot-ibgateway.service
+
+[Service]
+Type=simple
+User=ibkradmin
+WorkingDirectory=/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000
+ExecStart=/home/ibkradmin/trading/venv/bin/python /home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000/execution_monitor.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

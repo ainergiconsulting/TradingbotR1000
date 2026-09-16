@@ -156,3 +156,13 @@ K. Final acceptance
 - [ ] Git working tree reviewed for secrets/runtime artifacts before staging.
 - [ ] Relevant source/docs committed and pushed to configured GitHub `origin`; do not commit credentials, Flex tokens, runtime databases, raw broker reports or other sensitive account data.
 - [ ] SentinelX continuity context checkpointed after the durable documentation/Git state is complete.
+
+### 2026-09-16 — Block H execution notification hardening
+- Added dedicated read-only `execution_monitor.py` using IBKR client ID 1007 and `execDetailsEvent`; deployed as enabled `tradingbot-execution-monitor.service`.
+- Monitor is broker-mutation-free and maintains a persistent IBKR API connection; verified active and connected. Flex remains the 15-minute durable accounting/reconciliation fallback.
+- Reworked execution notification registry from claim-before-send to observed/delivered semantics: an execution is marked Telegram-notified only after alert transport returns successfully. Failed delivery therefore remains retryable.
+- API `execId` and Flex `ibExecID` share one persistent deduplication identity. Flex confirmation records confirmation without duplicating a notification already delivered by the API.
+- Migrated durable Flex ledger to persist `ib_exec_id` and `ib_order_id`; all 107 existing fills were backfilled from internal raw JSON without exposing identifiers.
+- Corrected lifecycle display to `PARTIALLY FILLED`.
+- Synthetic retry/dedup tests and Python compilation passed. No broker order was submitted; mobile mutations remain disabled.
+- Remaining acceptance: observe a controlled PAPER execution end-to-end and verify one timely Telegram execution notification plus later Flex confirmation with no duplicate.

@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS flex_executions (
     source_key TEXT NOT NULL UNIQUE,
     trade_id TEXT,
     transaction_id TEXT,
+    ib_exec_id TEXT,
+    ib_order_id TEXT,
     account_id TEXT,
     trade_date TEXT,
     date_time TEXT,
@@ -47,12 +49,14 @@ CREATE INDEX IF NOT EXISTS idx_flex_exec_trade_date ON flex_executions(trade_dat
 CREATE INDEX IF NOT EXISTS idx_flex_exec_symbol ON flex_executions(symbol);
 CREATE TABLE IF NOT EXISTS execution_notifications (
     exec_id TEXT PRIMARY KEY,
-    source TEXT NOT NULL,
+    first_seen_source TEXT NOT NULL,
     symbol TEXT,
     side TEXT,
     quantity REAL,
     price REAL,
-    notified_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    observed_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
+    telegram_notified_at_utc TEXT,
+    flex_confirmed_at_utc TEXT
 );
 """
 
@@ -81,7 +85,33 @@ def _source_key(a: dict[str, str]) -> str:
 def connect(path: Path = DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
+    # Create base tables first, then migrate older ledgers in place.
+    conn.execute("""CREATE TABLE IF NOT EXISTS flex_executions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, source_key TEXT NOT NULL UNIQUE,
+        trade_id TEXT, transaction_id TEXT, account_id TEXT, trade_date TEXT,
+        date_time TEXT, symbol TEXT NOT NULL, side TEXT NOT NULL,
+        quantity REAL NOT NULL, price REAL NOT NULL, proceeds REAL,
+        commission REAL, commission_currency TEXT, realized_pnl REAL,
+        order_type TEXT, open_close TEXT, asset_category TEXT, conid TEXT,
+        source_file TEXT NOT NULL, raw_json TEXT NOT NULL,
+        imported_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
+    )""")
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(flex_executions)")}
+    if "ib_exec_id" not in cols:
+        conn.execute("ALTER TABLE flex_executions ADD COLUMN ib_exec_id TEXT")
+    if "ib_order_id" not in cols:
+        conn.execute("ALTER TABLE flex_executions ADD COLUMN ib_order_id TEXT")
+    # Rebuild the early claim-only notification table if necessary. It was
+    # never populated in production, so no delivered-notification state is lost.
+    ncols = {row[1] for row in conn.execute("PRAGMA table_info(execution_notifications)")}
+    if ncols and "first_seen_source" not in ncols:
+        count = conn.execute("SELECT COUNT(*) FROM execution_notifications").fetchone()[0]
+        if count:
+            raise RuntimeError("legacy execution_notifications contains rows; manual migration required")
+        conn.execute("DROP TABLE execution_notifications")
     conn.executescript(SCHEMA)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_flex_exec_ib_exec_id ON flex_executions(ib_exec_id)")
+    conn.commit()
     return conn
 
 
@@ -133,12 +163,12 @@ def import_flex_xml(xml_path: Path, path: Path = DB_PATH) -> dict:
         for r in rows:
             cur = conn.execute(
                 """INSERT OR IGNORE INTO flex_executions(
-                    source_key, trade_id, transaction_id, account_id, trade_date,
+                    source_key, trade_id, transaction_id, ib_exec_id, ib_order_id, account_id, trade_date,
                     date_time, symbol, side, quantity, price, proceeds, commission,
                     commission_currency, realized_pnl, order_type, open_close,
                     asset_category, conid, source_file, raw_json
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (r["source_key"], r["trade_id"], r["transaction_id"], r["account_id"],
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (r["source_key"], r["trade_id"], r["transaction_id"], r["ib_exec_id"], r["ib_order_id"], r["account_id"],
                  r["trade_date"], r["date_time"], r["symbol"], r["side"], r["quantity"],
                  r["price"], r["proceeds"], r["commission"], r["commission_currency"],
                  r["realized_pnl"], r["order_type"], r["open_close"], r["asset_category"],
@@ -154,18 +184,47 @@ def import_flex_xml(xml_path: Path, path: Path = DB_PATH) -> dict:
     return {"parsed": len(rows), "inserted": inserted, "duplicates": duplicates, "total": total, "inserted_rows": inserted_rows}
 
 
-def claim_execution_notification(exec_id: str, *, source: str, symbol: str = "", side: str = "", quantity: float = 0.0, price: float = 0.0, path: Path = DB_PATH) -> bool:
-    """Atomically claim an IBKR execution id for one Telegram notification."""
+def observe_execution(exec_id: str, *, source: str, symbol: str = "", side: str = "", quantity: float = 0.0, price: float = 0.0, path: Path = DB_PATH) -> bool:
+    """Persist broker evidence and return True while Telegram delivery is still due."""
     exec_id = str(exec_id or "").strip()
     if not exec_id:
         return False
+    source = str(source or "UNKNOWN").upper()
     with connect(path) as conn:
-        cur = conn.execute(
-            "INSERT OR IGNORE INTO execution_notifications(exec_id,source,symbol,side,quantity,price) VALUES (?,?,?,?,?,?)",
+        conn.execute(
+            """INSERT OR IGNORE INTO execution_notifications
+               (exec_id,first_seen_source,symbol,side,quantity,price)
+               VALUES (?,?,?,?,?,?)""",
             (exec_id, source, symbol, side, _f(quantity), _f(price)),
         )
+        if source == "FLEX":
+            conn.execute(
+                "UPDATE execution_notifications SET flex_confirmed_at_utc=COALESCE(flex_confirmed_at_utc,strftime('%Y-%m-%dT%H:%M:%SZ','now')) WHERE exec_id=?",
+                (exec_id,),
+            )
+        row = conn.execute(
+            "SELECT telegram_notified_at_utc FROM execution_notifications WHERE exec_id=?", (exec_id,)
+        ).fetchone()
         conn.commit()
-        return cur.rowcount == 1
+        return bool(row and not row[0])
+
+
+def mark_execution_notified(exec_id: str, path: Path = DB_PATH) -> None:
+    """Mark delivery only after the Telegram transport completed successfully."""
+    exec_id = str(exec_id or "").strip()
+    if not exec_id:
+        return
+    with connect(path) as conn:
+        conn.execute(
+            "UPDATE execution_notifications SET telegram_notified_at_utc=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE exec_id=?",
+            (exec_id,),
+        )
+        conn.commit()
+
+
+def claim_execution_notification(exec_id: str, *, source: str, symbol: str = "", side: str = "", quantity: float = 0.0, price: float = 0.0, path: Path = DB_PATH) -> bool:
+    """Compatibility alias: records observation but does not mark Telegram delivered."""
+    return observe_execution(exec_id, source=source, symbol=symbol, side=side, quantity=quantity, price=price, path=path)
 
 
 def latest(limit: int = 20, path: Path = DB_PATH) -> list[dict]:

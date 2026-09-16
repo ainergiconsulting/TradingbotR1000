@@ -83,7 +83,7 @@ def alert_execution_filled(fill: dict[str, Any]) -> None:
         lines.append(f"Realized P&L: ${float(realized_pnl or 0):,.2f}")
     if commission is not None:
         lines.append(f"Commission: ${abs(float(commission or 0)):,.2f}")
-    lines.append("Source: IBKR Flex confirmed execution")
+    lines.append(f"Source: {str(fill.get('source') or 'IBKR confirmed execution')}")
     write_alert("order_filled", "\n".join(lines), extra=fill)
 
 
@@ -135,6 +135,7 @@ def alert_universe_refresh_failure(detail: str) -> None:
 def alert_order_status(order: dict[str, Any], status: str) -> None:
     """Send one operator-facing lifecycle alert for a broker order status."""
     normalized = str(status or "UNKNOWN").strip()
+    display_status = "PARTIALLY FILLED" if normalized.upper().replace("_", "").replace(" ", "") == "PARTIALLYFILLED" else normalized.upper()
     symbol = str(order.get("symbol") or "?").upper()
     side = str(order.get("side") or "?").upper()
     quantity = order.get("quantity")
@@ -145,7 +146,7 @@ def alert_order_status(order: dict[str, Any], status: str) -> None:
     cancellation = str(order.get("cancellation_reason") or "").strip()
 
     lines = [
-        f"{normalized.upper()} — {side} {symbol}",
+        f"{display_status} — {side} {symbol}",
         f"Quantity: {quantity}",
     ]
     if filled is not None:

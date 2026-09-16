@@ -117,3 +117,6 @@ Before operational activation, verify the exposure of the existing IBKR API port
 
 ## 16. Architecture conclusion
 Architecture v1 deliberately minimizes novelty: secure private mobile access and R1000 BUY selection are added around the already established Manual Control Console behavior. SELL remains restricted to held positions. Trading logic and safety remain deterministic and server-side. The next step is a concrete implementation checklist, followed by grouped implementation and paper-trading acceptance testing.
+
+## Execution notification architecture update — 2026-09-16
+Execution notification is now dual-source with a single broker execution identity. A dedicated read-only long-lived IBKR API monitor (client ID 1007) consumes `execDetailsEvent` for near-real-time operator notification. The durable Flex Trade Confirmation sync remains the accounting/reconciliation fallback. IBKR API `execId` is correlated with Flex `ibExecID`; persistent notification state separates observation from successful Telegram delivery so transport failure is retryable and later Flex confirmation cannot create a duplicate after successful API delivery. Neither notification path is permitted to place, modify, or cancel broker orders.

@@ -204,3 +204,6 @@ Required behavior:
 - The control must affect only `tradingbot-ibgateway.service`; it must not implicitly stop the bot, mobile console, Telegram listener, or other services unless a later approved safety rule explicitly requires it.
 - The same capability should be available on both PC Manual Console and Mobile Manual Console, subject to the same authentication/audit requirements as other privileged operational controls.
 - Every start/stop request and result must be audit logged with timestamp, origin (PC/mobile), authenticated session identity where available, requested action, and resulting service/API state.
+
+## Execution notification clarification — 2026-09-16
+The requirement that every actual broker execution be reported on Telegram is implemented as near-real-time IBKR API observation with durable Flex reconciliation/fallback. Notification deduplication is by broker execution identity and successful delivery, not by order submission. Partial executions remain distinct fills; whole-order completion may be stated only from broker order state showing no remaining quantity. Notification infrastructure must remain read-only with respect to broker mutations.

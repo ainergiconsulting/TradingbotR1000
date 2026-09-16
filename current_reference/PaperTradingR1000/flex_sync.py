@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from flex_execution_ledger import claim_execution_notification, import_flex_xml
+from flex_execution_ledger import import_flex_xml, mark_execution_notified, observe_execution
 from telegram_alerts import alert_execution_filled
 
 BASE = Path(__file__).resolve().parent
@@ -43,7 +43,7 @@ def sync() -> dict:
     notified = 0
     for fill in result.get("inserted_rows", []):
         exec_id = str(fill.get("ib_exec_id") or "").strip()
-        if not claim_execution_notification(
+        if not observe_execution(
             exec_id,
             source="FLEX",
             symbol=str(fill.get("symbol") or ""),
@@ -52,7 +52,8 @@ def sync() -> dict:
             price=float(fill.get("price") or 0),
         ):
             continue
-        alert_execution_filled(fill)
+        alert_execution_filled({**fill, "source": "IBKR Flex confirmed execution"})
+        mark_execution_notified(exec_id)
         notified += 1
     return {
         "source_file": after.name,
