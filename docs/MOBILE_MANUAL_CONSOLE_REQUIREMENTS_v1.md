@@ -207,3 +207,11 @@ Required behavior:
 
 ## Execution notification clarification — 2026-09-16
 The requirement that every actual broker execution be reported on Telegram is implemented as near-real-time IBKR API observation with durable Flex reconciliation/fallback. Notification deduplication is by broker execution identity and successful delivery, not by order submission. Partial executions remain distinct fills; whole-order completion may be stated only from broker order state showing no remaining quantity. Notification infrastructure must remain read-only with respect to broker mutations.
+
+
+### Daily Flex report delivery requirement
+- The production reporting design shall include one automatic IBKR Flex report delivery by email per day.
+- The daily email is an operational/audit copy; the server-side Flex/API execution ledger remains the authoritative data source used by the console.
+- Delivery must be monitored: a missing expected daily report must be detectable and reported rather than silently ignored.
+- Report email and attachments must not expose credentials, Flex tokens, or other secrets in application logs.
+- Exact delivery time, recipient address, and retention policy will be configured before production activation.

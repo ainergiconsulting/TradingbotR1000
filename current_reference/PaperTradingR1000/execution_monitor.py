@@ -10,7 +10,7 @@ import time
 from ib_insync import IB
 
 import config as cfg
-from flex_execution_ledger import mark_execution_notified, observe_execution
+from flex_execution_ledger import mark_execution_notified, observe_execution, record_commission_report
 from telegram_alerts import alert_execution_filled
 
 RECONNECT_SECONDS = 5
@@ -28,13 +28,15 @@ def _payload(trade, fill) -> tuple[str, dict]:
         "quantity": float(getattr(execution, "shares", 0) or 0),
         "price": float(getattr(execution, "price", 0) or 0),
         "date_time": str(getattr(execution, "time", "") or ""),
+        "ib_order_id": str(getattr(execution, "orderId", "") or ""),
         "source": "IBKR API real-time execution",
     }
 
 
 def _on_exec_details(trade, fill) -> None:
     exec_id, payload = _payload(trade, fill)
-    if not observe_execution(exec_id, source="IBKR_API", symbol=payload["symbol"], side=payload["side"], quantity=payload["quantity"], price=payload["price"]):
+    order_id = str(getattr(fill.execution, "orderId", "") or "").strip()
+    if not observe_execution(exec_id, source="IBKR_API", symbol=payload["symbol"], side=payload["side"], quantity=payload["quantity"], price=payload["price"], execution_time=payload["date_time"], ib_order_id=order_id):
         return
     # Deliberately mark only after alert transport returns successfully. If it
     # raises, the execution remains retryable by a reconnect/reconciliation/Flex.
@@ -42,13 +44,35 @@ def _on_exec_details(trade, fill) -> None:
     mark_execution_notified(exec_id)
 
 
+def _on_commission_report(trade, fill, report) -> None:
+    """Persist commission and realized P&L reported by IBKR for this fill."""
+    exec_id = str(getattr(report, "execId", "") or getattr(fill.execution, "execId", "") or "").strip()
+    commission = getattr(report, "commission", None)
+    currency = str(getattr(report, "currency", "") or "")
+    realized_pnl = getattr(report, "realizedPNL", None)
+    record_commission_report(exec_id, commission, currency, realized_pnl)
+
+
 def run() -> int:
     while True:
         ib = IB()
         try:
             ib.connect(cfg.HOST, cfg.PORT, clientId=cfg.EXECUTION_MONITOR_CLIENT_ID, readonly=True, timeout=10)
+            # Reconcile executions already known to IBKR before subscribing to
+            # new events. Historical observations are persisted without
+            # generating retrospective Telegram alerts.
+            reconciled = 0
+            for fill in ib.reqExecutions():
+                exec_id, payload = _payload(None, fill)
+                order_id = str(getattr(fill.execution, "orderId", "") or "").strip()
+                observe_execution(exec_id, source="IBKR_API", symbol=payload["symbol"], side=payload["side"], quantity=payload["quantity"], price=payload["price"], execution_time=payload["date_time"], ib_order_id=order_id)
+                report = getattr(fill, "commissionReport", None)
+                if report is not None and str(getattr(report, "execId", "") or "").strip():
+                    _on_commission_report(None, fill, report)
+                reconciled += 1
             ib.execDetailsEvent += _on_exec_details
-            print("Execution monitor connected (read-only).", flush=True)
+            ib.commissionReportEvent += _on_commission_report
+            print(f"Execution monitor connected and reconciled {reconciled} executions (read-only).", flush=True)
             ib.run()
         except KeyboardInterrupt:
             return 0

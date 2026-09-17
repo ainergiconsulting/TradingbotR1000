@@ -1,0 +1,8 @@
+[Unit]
+Description=Resume TradingbotR1000 controller after repair acceptance
+After=network-online.target tradingbot-ibgateway.service
+Wants=network-online.target tradingbot-ibgateway.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl start tradingbot-controller.service

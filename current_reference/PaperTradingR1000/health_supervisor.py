@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import time
+from datetime import datetime, timedelta, timezone
 
 import config as cfg
 from alert_utils import write_alert
@@ -14,6 +15,7 @@ from gateway_status import collect_system_health
 from heartbeat_utils import heartbeat_is_fresh
 from monitoring_io import atomic_write_json, utc_timestamp
 from runtime_processes import clear_pid, process_info, write_pid
+from strategy_scheduler import NY_TZ, cycle_time, is_market_session_day, load_scheduler_state
 
 
 IBKR_DEGRADED_AFTER_CONSECUTIVE_FAILURES = 3
@@ -23,6 +25,35 @@ IBKR_TRANSIENT_ERRORS = {
     "RUNTIMEERROR",
     "LIVE_PROBE_SKIPPED",
 }
+
+STRATEGY_CYCLE_MISSED_GRACE_MINUTES = 15
+
+def strategy_cycle_watchdog(now: datetime | None = None) -> dict[str, object]:
+    """Detect a daily strategy cycle that should already have completed.
+
+    This is monitoring only: it never launches the strategy engine or orders.
+    It prevents a silent missed trading day from being reported as healthy.
+    """
+    now_utc = now or datetime.now(timezone.utc)
+    now_et = now_utc.astimezone(NY_TZ)
+    today = now_et.date()
+    if not is_market_session_day(today):
+        return {"status": "NOT_DUE", "missed": False}
+    target = cycle_time()
+    due = now_et.replace(hour=target.hour, minute=target.minute, second=0, microsecond=0)
+    deadline = due + timedelta(minutes=STRATEGY_CYCLE_MISSED_GRACE_MINUTES)
+    if now_et < deadline:
+        return {"status": "NOT_DUE", "missed": False, "deadline_et": deadline.isoformat()}
+    state = load_scheduler_state()
+    if state.get("last_cycle_date") == today.isoformat():
+        return {"status": "COMPLETED", "missed": False, "last_cycle_date": state.get("last_cycle_date")}
+    return {
+        "status": "MISSED",
+        "missed": True,
+        "expected_cycle_date": today.isoformat(),
+        "expected_cycle_time_et": target.strftime("%H:%M"),
+        "last_cycle_date": state.get("last_cycle_date", ""),
+    }
 
 
 def _previous_supervisor_status() -> dict[str, object]:
@@ -86,6 +117,8 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
     previous_ibkr_status = str(previous.get("ibkr_connection_status") or "").upper()
     previous_heartbeat_fresh = previous.get("heartbeat_fresh")
     previous_api_failures = int(previous.get("consecutive_api_failures") or 0)
+    cycle_watch = strategy_cycle_watchdog()
+    previous_cycle_watch = previous.get("strategy_cycle_watchdog") or {}
 
     if raw_ibkr_status == "CONNECTED":
         consecutive_api_failures = 0
@@ -140,16 +173,29 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
             "IBKR live API connection restored.",
         )
 
+    if cycle_watch.get("missed") and not (isinstance(previous_cycle_watch, dict) and previous_cycle_watch.get("missed")):
+        write_alert(
+            "strategy_cycle_missed",
+            (
+                "TradingbotR1000 daily strategy cycle is missing after its grace period. "
+                f"Expected {cycle_watch.get('expected_cycle_date')} "
+                f"{cycle_watch.get('expected_cycle_time_et')} ET; "
+                f"last completed={cycle_watch.get('last_cycle_date') or 'none'}."
+            ),
+        )
+
     if not fresh:
         overall_status = "STALE_HEARTBEAT"
-    elif ibkr_status == "CONNECTED":
-        overall_status = "OK"
     elif ibkr_status == "DEGRADED":
         overall_status = "DEGRADED_IBKR"
     elif ibkr_status == "DISCONNECTED":
         overall_status = "IBKR_DISCONNECTED"
-    else:
+    elif ibkr_status != "CONNECTED":
         overall_status = "IBKR_UNKNOWN"
+    elif cycle_watch.get("missed"):
+        overall_status = "STRATEGY_CYCLE_MISSED"
+    else:
+        overall_status = "OK"
 
     payload = {
         "bot": cfg.BOT_NAME,
@@ -162,6 +208,7 @@ def evaluate_health(max_heartbeat_age_seconds: int = 180) -> dict[str, object]:
         "api_socket_status": socket_status,
         "live_api_error": live_api_error,
         "consecutive_api_failures": consecutive_api_failures,
+        "strategy_cycle_watchdog": cycle_watch,
     }
     atomic_write_json(cfg.SUPERVISOR_STATUS_FILE, payload)
     return payload

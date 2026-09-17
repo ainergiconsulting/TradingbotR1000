@@ -142,7 +142,7 @@ The approved `run/start_trading_system.bat` launcher sets this switch for the
 R1000 background runtime. Direct Python/module execution remains disabled unless
 the same switch is supplied explicitly in that process environment.
 
-The operational controller evaluates one automated strategy cycle per eligible US trading day at `09:35 America/New_York`. This time is an implementation scheduling choice for submitting next-trading-day entry orders and next-open exit orders after the US market has opened; it is not an additional strategy rule. Broker transmission remains gated by live IBKR market-hours and liquid-hours evidence and is refused outside liquid hours. The controller records the last completed cycle date to prevent repeated entry cycles for the same trading day.
+The operational controller evaluates one automated strategy cycle per eligible US trading day at `09:28 America/New_York`. This time is an implementation scheduling choice for submitting next-trading-day entry orders and next-open exit orders after the US market has opened; it is not an additional strategy rule. Broker transmission remains gated by live IBKR market-hours and liquid-hours evidence and is refused outside liquid hours. The controller records the last completed cycle date to prevent repeated entry cycles for the same trading day.
 
 Eligible sessions are weekdays excluding the standard US equity-market holidays
 recognized by the local scheduler, including observed fixed-date holidays and

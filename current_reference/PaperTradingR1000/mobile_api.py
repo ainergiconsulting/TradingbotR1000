@@ -18,7 +18,7 @@ import config as cfg
 import manual_trading_core as core
 import mobile_auth as auth
 from live_account import collect_live_account_context
-from flex_execution_ledger import latest as ledger_latest, pnl_summary as ledger_pnl_summary
+from flex_execution_ledger import latest as ledger_latest, order_history as ledger_order_history, pnl_summary as ledger_pnl_summary
 from mobile_r1000_selector import get_r1000_symbol, load_r1000_universe, search_r1000
 
 BASE = Path(__file__).resolve().parent
@@ -217,12 +217,26 @@ async def account():
     }
 
 
+def _mobile_position_row(row: dict) -> dict:
+    """Canonical mobile position schema; never make the PWA guess IBKR field names."""
+    return {
+        **row,
+        "symbol": row.get("symbol") or row.get("ibkrSymbol") or "",
+        "quantity": row.get("quantity") if row.get("quantity") not in (None, "") else row.get("position"),
+        "average_cost": row.get("averageCost") if row.get("averageCost") not in (None, "") else row.get("avgCost"),
+        "market_price": row.get("marketPrice"),
+        "market_value": row.get("marketValue"),
+        "unrealized_pnl": row.get("unrealizedPNL"),
+        "realized_pnl": row.get("realizedPNL"),
+    }
+
+
 @app.get("/api/positions")
 async def positions():
     snapshot = await asyncio.get_running_loop().run_in_executor(
         BROKER_EXECUTOR, _canonical_mobile_snapshot
     )
-    return _plain(snapshot.get("positions", []))
+    return _plain([_mobile_position_row(row) for row in snapshot.get("positions", [])])
 
 
 @app.get("/api/orders")
@@ -234,9 +248,20 @@ async def orders():
 
 
 @app.get("/api/executions")
-async def executions(limit: int = Query(20, ge=1, le=100)):
-    # Durable IBKR Flex ledger, not the transient current Gateway session.
+async def executions(limit: int = Query(100, ge=1, le=500)):
+    # Fill-level audit view. Durable IBKR Flex ledger, not the transient Gateway session.
     return _plain(ledger_latest(limit=limit))
+
+
+@app.get("/api/execution-orders")
+async def execution_orders(
+    side: str = Query("ALL", pattern="^(ALL|BUY|SELL)$"),
+    symbol: str = Query("", max_length=16),
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    # Human-facing history: one row per broker order, with fill count retained for audit.
+    return _plain(ledger_order_history(side=side, symbol=symbol, limit=limit, offset=offset))
 
 
 @app.get("/api/pnl")

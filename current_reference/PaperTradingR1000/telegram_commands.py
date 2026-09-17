@@ -30,19 +30,60 @@ def render_status() -> str:
         strategy_cap=float(capital_limit.get("effective_investable_capital") or 0.0),
     )
 
-    return "\n".join(
-        [
-            f"{cfg.BOT_NAME} status",
-            f"Engine: {health.get('strategy_engine_state', 'not checked')}",
-            f"Last scan: {scan.get('timestamp_utc', 'none')}",
-            f"Selected: {len(scan.get('selected_candidates', []))}",
-            f"Orders planned: {len(scan.get('order_plans', []))}",
-            f"Account equity (NLV): ${net_liquidation:,.2f}",
-            f"IBKR available funds: ${capital_budget['ibkr_available_funds']:,.2f}",
-            f"Safety margin: {capital_budget['capital_safety_margin_pct'] * 100:.2f}%",
-            f"Operational buy budget: ${capital_budget['operational_buy_budget']:,.2f}",
-        ]
-    )
+    buy_plans = list(scan.get("order_plans", []) or [])
+    sell_plans = list(scan.get("sell_order_plans", []) or [])
+    live_positions = {
+        str(row.get("symbol") or "").upper(): float(row.get("quantity") or row.get("position") or 0.0)
+        for row in snapshot.get("positions", []) or []
+    }
+    valid_plans = list(buy_plans)
+    stale_sell_plans = []
+    for row in sell_plans:
+        symbol = str(row.get("symbol") or "").upper()
+        if live_positions.get(symbol, 0.0) > 0:
+            valid_plans.append(row)
+        else:
+            stale_sell_plans.append(row)
+
+    lines = [
+        f"{cfg.BOT_NAME} status",
+        f"Engine: {health.get('strategy_engine_state', 'not checked')}",
+        f"Last scan: {scan.get('timestamp_utc', 'none')}",
+        f"Selected: {len(scan.get('selected_candidates', []))}",
+        f"Orders currently valid: {len(valid_plans)}",
+    ]
+    if valid_plans:
+        lines.extend(["", "PLANNED / CURRENTLY VALID:"])
+        for row in valid_plans:
+            is_sell = row in sell_plans
+            side = str(row.get("side") or row.get("action") or ("SELL" if is_sell else "BUY")).upper()
+            symbol = str(row.get("symbol") or "?").upper()
+            order_type = str(row.get("order_type") or ("MARKET" if side == "SELL" else "LIMIT")).upper()
+            qty = row.get("quantity")
+            if side == "SELL":
+                qty = live_positions.get(symbol, 0.0)
+            elif qty in (None, ""):
+                allocation = float(row.get("allocation_value") or 0.0)
+                limit_for_qty = float(row.get("limit_price") or 0.0)
+                qty = int(allocation // limit_for_qty) if allocation > 0 and limit_for_qty > 0 else "pending broker sizing"
+            detail = f"- {side} {symbol} | qty {qty:g} | {order_type}" if isinstance(qty, (int, float)) else f"- {side} {symbol} | qty {qty} | {order_type}"
+            limit_price = row.get("limit_price")
+            if order_type == "LIMIT" and limit_price not in (None, ""):
+                detail += f" @ ${float(limit_price):,.2f}"
+            lines.append(detail)
+    if stale_sell_plans:
+        lines.extend(["", "STALE / BLOCKED:"])
+        for row in stale_sell_plans:
+            symbol = str(row.get("symbol") or "?").upper()
+            lines.append(f"- SELL {symbol} | BLOCKED: no current IBKR position")
+    lines.extend([
+        "",
+        f"Account equity (NLV): ${net_liquidation:,.2f}",
+        f"IBKR available funds: ${capital_budget['ibkr_available_funds']:,.2f}",
+        f"Safety margin: {capital_budget['capital_safety_margin_pct'] * 100:.2f}%",
+        f"Operational buy budget: ${capital_budget['operational_buy_budget']:,.2f}",
+    ])
+    return "\n".join(lines)
 
 
 def render_health() -> str:

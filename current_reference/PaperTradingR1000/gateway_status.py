@@ -330,7 +330,19 @@ def collect_live_api_evidence(host: str, port: int) -> dict[str, Any]:
 
     ib = IB()
     try:
-        ib.connect(host, int(port), clientId=client_id, timeout=5)
+        # Health needs connectivity/current account evidence. ib_insync also
+        # attempts a completed-orders sync during connect; this Gateway can time
+        # that optional request out even while the health evidence succeeds.
+        # Suppress that library warning for this probe only; connectivity and
+        # requested health evidence are still evaluated below.
+        import logging
+        ib_logger = logging.getLogger("ib_insync.ib")
+        previous_level = ib_logger.level
+        try:
+            ib_logger.setLevel(logging.ERROR)
+            ib.connect(host, int(port), clientId=client_id, timeout=5, readonly=True)
+        finally:
+            ib_logger.setLevel(previous_level)
         set_ibkr_request_timeout(ib)
         server_time = get_ibkr_server_time(ib)
         positions = snapshot_positions(ib)

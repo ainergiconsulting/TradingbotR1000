@@ -17,6 +17,7 @@ from automated_order_store import (
 from ibkr_utils import connect, stock_contract
 from logger_utils import log
 from monitoring_io import atomic_write_json, utc_timestamp
+from order_safety import LongOnlyOrderRejected, acquire_order_intent_guard
 try:
     from ib_insync import LimitOrder, MarketOrder
 except Exception:  # pragma: no cover - dependency availability is environment-specific.
@@ -279,7 +280,35 @@ def process_order_plan(
             order = _build_ibkr_order(intent)
             intent["submitted_at_utc"] = utc_timestamp()
             row = upsert_order_intent(intent, broker_status="PendingSubmit", reason="submitted_to_ibkr")
-            trade = ib.placeOrder(contract, order)
+            if str(intent.get("side") or "").upper() == "SELL":
+                # Final broker-authoritative invariant at the last possible point:
+                # refresh positions + all open orders and refuse any SELL that
+                # could create a short, regardless of stale scan/snapshot state.
+                try:
+                    with acquire_order_intent_guard(
+                        ib, contract, "SELL", intent["quantity"],
+                        allow_short=False, context="automated_broker",
+                        strategy=str(intent.get("strategy_version") or cfg.BOT_NAME),
+                        refresh=True,
+                    ) as safety_guard:
+                        trade = ib.placeOrder(contract, order)
+                        safety_guard.mark_submitted(trade)
+                except LongOnlyOrderRejected as exc:
+                    # This exception is raised before broker submission by the
+                    # safety guard. Do not catch generic exceptions here: once
+                    # placeOrder has been called, an uncertain outcome must
+                    # propagate and be reconciled, never be mislabeled rejected.
+                    update_order_status(
+                        order_key=row["order_key"], broker_status="Rejected",
+                        rejection_reason=f"long_only_final_guard:{type(exc).__name__}:{exc}",
+                    )
+                    rejected.append({
+                        "symbol": intent["symbol"], "side": intent["side"],
+                        "reason": f"long_only_final_guard:{type(exc).__name__}:{exc}",
+                    })
+                    continue
+            else:
+                trade = ib.placeOrder(contract, order)
             pending_submissions.append((intent, row, trade))
 
         if pending_submissions:

@@ -82,6 +82,40 @@ def reconcile_automated_orders(broker_snapshot: dict[str, Any]) -> dict[str, int
             order["average_fill_price"] = float(status_payload.get("avgFillPrice") or 0)
             order["updated_at_utc"] = utc_timestamp()
             updates["open_order_updates"] += 1
+    # Any locally-active automated order that has a broker identity but is no
+    # longer present in a fresh complete broker open-order snapshot must not
+    # remain labelled Pending/PreSubmitted forever.  Absence alone cannot tell
+    # us whether IBKR cancelled, expired, or otherwise finalized it, so record
+    # a distinct terminal UNKNOWN_FINAL state rather than inventing a cause.
+    live_ids = set()
+    for open_order in broker_snapshot.get("open_orders", []) or []:
+        op = open_order.get("order") or {}
+        if op.get("permId") not in (None, ""):
+            live_ids.add(("perm", str(op.get("permId"))))
+        if op.get("orderId") not in (None, ""):
+            live_ids.add(("order", str(op.get("orderId"))))
+    active_states = {"PENDINGSUBMIT", "PRESUBMITTED", "SUBMITTED", "PARTIALLYFILLED", "PENDINGCANCEL"}
+    if broker_snapshot.get("open_orders_complete", True):
+        for order in orders:
+            state = str(order.get("broker_status") or "").upper()
+            if state not in active_states:
+                continue
+            perm = str(order.get("perm_id") or "")
+            oid = str(order.get("ibkr_order_id") or "")
+            identified = bool(perm or oid)
+            present = (("perm", perm) in live_ids if perm else False) or (("order", oid) in live_ids if oid else False)
+            if identified and not present:
+                order["broker_status"] = "UnknownFinal"
+                order["cancellation_reason"] = "broker_order_no_longer_open; exact final reason unavailable from current API evidence"
+                order["updated_at_utc"] = utc_timestamp()
+                order.setdefault("status_history", []).append({
+                    "timestamp_utc": utc_timestamp(),
+                    "broker_status": "UnknownFinal",
+                    "reason": "broker_order_no_longer_open",
+                })
+                updates.setdefault("missing_open_order_finalizations", 0)
+                updates["missing_open_order_finalizations"] += 1
+
     for fill in broker_snapshot.get("executions", []) or []:
         execution = fill.get("execution") or {}
         exec_id = str(execution.get("execId") or "").strip()

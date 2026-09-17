@@ -20,3 +20,46 @@
 - A `DEGRADED` episode emits one `ibkr_degraded` Telegram alert; hard socket/Gateway loss emits `ibkr_disconnected`; recovery emits `ibkr_reconnected`.
 - Supervisor `status` is no longer `OK` merely because the heartbeat is fresh: it now reports `IBKR_UNKNOWN`, `DEGRADED_IBKR`, `IBKR_DISCONNECTED`, or `STALE_HEARTBEAT` when applicable.
 - Added focused regression tests for timeout degradation, hard disconnect and recovery transitions.
+
+
+## 2026-09-17 — Mobile/order pipeline full repair
+- Canonicalized mobile position fields at the API boundary so average cost, market price/value and unrealized P&L use the same broker snapshot as Telegram.
+- Added a final broker-authoritative long-only SELL guard immediately before automated `placeOrder`, in addition to planning-time position validation.
+- Preserved strict separation between local PLANNED intents and broker PENDING/SUBMITTED orders.
+- Mobile broker mutations remain disabled pending controlled acceptance.
+
+
+## 2026-09-17 - Complete operational repair and order-lifecycle hardening
+- Mobile position schema normalized: average_cost, market_price, market_value, unrealized_pnl and realized_pnl are populated from IBKR camelCase fields while retaining compatibility aliases. Live verification returned full ABNB values rather than N/A.
+- Market-hours path verified against IBKR server time; ABNB returned known=true, trading_open=true, liquid_open=true, time_source=IBKR_SERVER_TIME. tzdata/US-Eastern resolution verified working in production venv.
+- Long-only SELL safety hardened at final broker submission boundary. Immediately before placeOrder, fresh broker positions and all open orders are re-read; pending SELL quantity is deducted; any SELL producing projected position < 0 fails closed. A synthetic stale BRKR SELL with no live position was rejected with broker_orders_transmitted=0.
+- Automated SELL submission now uses OrderIntentGuard around the final placeOrder boundary and records uncertain submission outcomes rather than incorrectly labelling an exception as a definite rejection.
+- Telegram status separates current valid plans from stale/blocked SELL plans; portfolio Pending orders are broker-open orders, not merely local plans.
+- Reconciliation hardened: locally active orders with broker IDs that disappear from a fresh complete broker open-order snapshot no longer remain permanently PreSubmitted. They transition to UnknownFinal without fabricating an unsupported cancellation cause.
+- Mobile manual mutations remain disabled (MOBILE_MANUAL_MUTATIONS_ENABLED=0).
+
+VALIDATION:
+- Operational targeted regression suite: 54 tests, all passed.
+- Full project discovery: 70 operational/strategy tests passed; 4 unrelated backtest/short-strategy import/setup errors remain because optional/missing backtest modules/files are absent. These are outside live TradingbotR1000 operational code and were not treated as operational failures.
+- Live read-only IBKR check: current position ABNB 1176; zero open orders.
+- Synthetic phantom BRKR SELL dry run: rejected no_live_position_quantity; proof_no_broker_order_transmitted=true.
+- Controller intentionally remains STOPPED during repair/acceptance; no live/paper broker order was transmitted by this repair.
+
+DESIGN DECISION REQUIRED FOR FUTURE ENTRY ORDERS:
+Automated entry orders are currently DAY by explicit code. If strategy intent is instead to keep an unfilled limit order beyond the session, that is a strategy/order-policy change (e.g. GTC or controlled resubmission) and must be decided explicitly rather than silently changed during a repair.
+
+FINAL VERIFICATION ADDENDUM 2026-09-17:
+- A subsequent live read-only sample exposed an intermittent race: positions could arrive before IBKR portfolio market/P&L fields, yielding N/A. operational_api_snapshot.snapshot_positions was hardened with a bounded wait for portfolio updates on the already-connected read-only session.
+- After mobile-console restart, two consecutive live samples returned ABNB qty 1176, averageCost 169.305003, marketPrice 165.57772825, marketValue 194719.41, unrealizedPNL -4383.28; open orders 0 in both samples.
+- Final operational regression suite repeated after this change: 54/54 tests passed.
+- Final service state: controller INACTIVE intentionally; mobile console ACTIVE; Telegram ACTIVE; health supervisor/execution monitor/IB Gateway ACTIVE. No order was transmitted during repair verification.
+
+## 2026-09-17 — Daily-cycle watchdog and health-probe hardening
+- Forensics confirmed the 2026-09-17 strategy cycle did not run because the controller was intentionally stopped at 13:22:55 UTC during repair work, before the configured 09:28 ET / 13:28 UTC cycle. The daily market-data refresh itself completed OK at 12:44:28 UTC with 1017/1017 symbols current through 20260916.
+- Added an independent health-supervisor watchdog: on an eligible US session, if the configured daily strategy cycle has not been recorded within 15 minutes after 09:28 ET, health becomes `STRATEGY_CYCLE_MISSED` (when IBKR/heartbeat do not already indicate a higher-priority fault) and a deduplicated `strategy_cycle_missed` alert is emitted. This prevents a missed trading day from remaining silent.
+- Confirmed recurring `completed orders request timed out` lines came from ib_insync's optional connect-time completed-order synchronization in the read-only health probe, not from the strategy scheduler. The probe remains broker-read-only and suppresses that known library warning locally while still validating the actual requested health evidence.
+- Corrected PROJECT_SPECIFICATION schedule drift from 09:35 ET to the actual configured/tested 09:28 ET.
+- Automated PAPER activation preflight passed with current PAPER account, connected IBKR API, RECONCILED broker state, zero open orders, and current market data. Controller remains stopped until final acceptance/restart verification is complete.
+- Final Sep-17 readiness: 76/76 operational/support tests passed. Isolated no-transmission end-to-end scan against current data found RVMD/NTRS/MS/IVZ and reconciled cleanly with 0 broker transmissions.
+- Added one-shot `tradingbot-controller-resume.timer` for 2026-09-18 11:45 UTC (07:45 ET), intentionally before the 08:30 ET data refresh and 09:28 ET cycle. Controller is not started late on Sep-17 because scheduler catch-up semantics would execute today's missed cycle immediately.
+- Restored canonical automated execution report after synthetic BRKR safety test contamination, using durable Sep-16 automated-order evidence.

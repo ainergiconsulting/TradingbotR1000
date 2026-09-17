@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS flex_executions (
     conid TEXT,
     source_file TEXT NOT NULL,
     raw_json TEXT NOT NULL,
+    source_kind TEXT NOT NULL DEFAULT 'FLEX',
+    flex_confirmed INTEGER NOT NULL DEFAULT 1,
     imported_at_utc TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_flex_exec_trade_date ON flex_executions(trade_date);
@@ -58,6 +60,10 @@ CREATE TABLE IF NOT EXISTS execution_notifications (
     telegram_notified_at_utc TEXT,
     flex_confirmed_at_utc TEXT,
     execution_time TEXT,
+    ib_order_id TEXT,
+    commission REAL,
+    commission_currency TEXT,
+    realized_pnl REAL,
     notification_status TEXT NOT NULL DEFAULT 'PENDING'
 );
 CREATE TABLE IF NOT EXISTS flex_coverage (
@@ -110,10 +116,22 @@ def connect(path: Path = DB_PATH) -> sqlite3.Connection:
         conn.execute("ALTER TABLE flex_executions ADD COLUMN ib_exec_id TEXT")
     if "ib_order_id" not in cols:
         conn.execute("ALTER TABLE flex_executions ADD COLUMN ib_order_id TEXT")
+    if "source_kind" not in cols:
+        conn.execute("ALTER TABLE flex_executions ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'FLEX'")
+    if "flex_confirmed" not in cols:
+        conn.execute("ALTER TABLE flex_executions ADD COLUMN flex_confirmed INTEGER NOT NULL DEFAULT 1")
     conn.executescript(SCHEMA)
     ncols = {row[1] for row in conn.execute("PRAGMA table_info(execution_notifications)")}
     if "execution_time" not in ncols:
         conn.execute("ALTER TABLE execution_notifications ADD COLUMN execution_time TEXT")
+    if "ib_order_id" not in ncols:
+        conn.execute("ALTER TABLE execution_notifications ADD COLUMN ib_order_id TEXT")
+    if "commission" not in ncols:
+        conn.execute("ALTER TABLE execution_notifications ADD COLUMN commission REAL")
+    if "commission_currency" not in ncols:
+        conn.execute("ALTER TABLE execution_notifications ADD COLUMN commission_currency TEXT")
+    if "realized_pnl" not in ncols:
+        conn.execute("ALTER TABLE execution_notifications ADD COLUMN realized_pnl REAL")
     if "notification_status" not in ncols:
         conn.execute("ALTER TABLE execution_notifications ADD COLUMN notification_status TEXT NOT NULL DEFAULT 'PENDING'")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_flex_exec_ib_exec_id ON flex_executions(ib_exec_id)")
@@ -190,8 +208,8 @@ def import_flex_xml(xml_path: Path, path: Path = DB_PATH) -> dict:
     return {"parsed": len(rows), "inserted": inserted, "duplicates": duplicates, "total": total, "inserted_rows": inserted_rows}
 
 
-def observe_execution(exec_id: str, *, source: str, symbol: str = "", side: str = "", quantity: float = 0.0, price: float = 0.0, path: Path = DB_PATH) -> bool:
-    """Persist broker evidence and return True while Telegram delivery is still due."""
+def observe_execution(exec_id: str, *, source: str, symbol: str = "", side: str = "", quantity: float = 0.0, price: float = 0.0, execution_time: str = "", ib_order_id: str = "", path: Path = DB_PATH) -> bool:
+    """Persist broker execution evidence and return True while Telegram delivery is due."""
     exec_id = str(exec_id or "").strip()
     if not exec_id:
         return False
@@ -199,20 +217,45 @@ def observe_execution(exec_id: str, *, source: str, symbol: str = "", side: str 
     with connect(path) as conn:
         conn.execute(
             """INSERT OR IGNORE INTO execution_notifications
-               (exec_id,first_seen_source,symbol,side,quantity,price)
-               VALUES (?,?,?,?,?,?)""",
-            (exec_id, source, symbol, side, _f(quantity), _f(price)),
+               (exec_id,first_seen_source,symbol,side,quantity,price,execution_time)
+               VALUES (?,?,?,?,?,?,?)""",
+            (exec_id, source, symbol, side, _f(quantity), _f(price), str(execution_time or "")),
+        )
+        if ib_order_id:
+            conn.execute("UPDATE execution_notifications SET ib_order_id=COALESCE(NULLIF(ib_order_id,''),?) WHERE exec_id=?", (str(ib_order_id), exec_id))
+        conn.execute(
+            """UPDATE execution_notifications SET
+               symbol=COALESCE(NULLIF(?,''),symbol), side=COALESCE(NULLIF(?,''),side),
+               quantity=CASE WHEN ?>0 THEN ? ELSE quantity END,
+               price=CASE WHEN ?>0 THEN ? ELSE price END,
+               execution_time=COALESCE(NULLIF(?,''),execution_time),
+               ib_order_id=COALESCE(NULLIF(?,''),ib_order_id)
+               WHERE exec_id=?""",
+            (symbol, side, _f(quantity), _f(quantity), _f(price), _f(price), str(execution_time or ""), str(ib_order_id or ""), exec_id),
         )
         if source == "FLEX":
             conn.execute(
                 "UPDATE execution_notifications SET flex_confirmed_at_utc=COALESCE(flex_confirmed_at_utc,strftime('%Y-%m-%dT%H:%M:%SZ','now')) WHERE exec_id=?",
                 (exec_id,),
             )
-        row = conn.execute(
-            "SELECT telegram_notified_at_utc FROM execution_notifications WHERE exec_id=?", (exec_id,)
-        ).fetchone()
+        row = conn.execute("SELECT telegram_notified_at_utc FROM execution_notifications WHERE exec_id=?", (exec_id,)).fetchone()
         conn.commit()
         return bool(row and not row[0])
+
+
+def record_commission_report(exec_id: str, commission: float | None, currency: str = "", realized_pnl: float | None = None, path: Path = DB_PATH) -> None:
+    """Attach IBKR CommissionReport accounting fields to an observed execution."""
+    exec_id = str(exec_id or "").strip()
+    if not exec_id:
+        return
+    with connect(path) as conn:
+        conn.execute(
+            """UPDATE execution_notifications
+               SET commission=?, commission_currency=?, realized_pnl=?
+               WHERE exec_id=?""",
+            (commission, str(currency or ""), realized_pnl, exec_id),
+        )
+        conn.commit()
 
 
 def mark_execution_notified(exec_id: str, path: Path = DB_PATH) -> None:
@@ -238,14 +281,77 @@ def latest(limit: int = 20, path: Path = DB_PATH) -> list[dict]:
         rows = conn.execute(
             """SELECT date_time, trade_date, symbol, side, quantity, price,
                       proceeds, commission, realized_pnl, order_type, open_close,
-                      trade_id, transaction_id
+                      trade_id, transaction_id, ib_exec_id, ib_order_id, source_kind, flex_confirmed
                FROM flex_executions
                ORDER BY trade_date DESC, date_time DESC, id DESC LIMIT ?""",
             (int(limit),),
         ).fetchall()
     keys = ["date_time","trade_date","symbol","side","quantity","price","proceeds",
-            "commission","realized_pnl","order_type","open_close","trade_id","transaction_id"]
+            "commission","realized_pnl","order_type","open_close","trade_id","transaction_id",
+            "ib_exec_id","ib_order_id","source_kind","flex_confirmed"]
     return [dict(zip(keys, row)) for row in rows]
+
+
+def order_history(*, start_date: str | None = None, side: str = "ALL", symbol: str = "", limit: int = 200, offset: int = 0, path: Path = DB_PATH) -> dict:
+    """Return broker orders aggregated from their individual Flex fills."""
+    if start_date is None:
+        start_date = cfg.PAPER_PNL_START_DATE
+    start_key = str(start_date).replace("-", "")
+    side = str(side or "ALL").upper()
+    symbol = str(symbol or "").upper().strip()
+    where = ["trade_date>=?"]
+    params: list[object] = [start_key]
+    if side in {"BUY", "SELL"}:
+        where.append("side=?")
+        params.append(side)
+    if symbol:
+        where.append("symbol=?")
+        params.append(symbol)
+    clause = " AND ".join(where)
+    group_key = "COALESCE(NULLIF(ib_order_id,''), 'NOORDER:' || source_key)"
+    with connect(path) as conn:
+        total = conn.execute(f"SELECT COUNT(*) FROM (SELECT 1 FROM flex_executions WHERE {clause} GROUP BY {group_key}, symbol, side)", params).fetchone()[0]
+        rows = conn.execute(
+            f"""SELECT {group_key} AS order_id, symbol, side,
+                       MIN(trade_date), MIN(date_time), SUM(quantity),
+                       CASE WHEN SUM(quantity)>0 THEN SUM(quantity*price)/SUM(quantity) ELSE 0 END,
+                       COUNT(*), SUM(commission), SUM(realized_pnl),
+                       MIN(order_type), MIN(flex_confirmed), MAX(trade_date), MAX(date_time)
+                FROM flex_executions WHERE {clause}
+                GROUP BY order_id, symbol, side
+                ORDER BY MAX(trade_date) DESC, MAX(date_time) DESC
+                LIMIT ? OFFSET ?""",
+            [*params, int(limit), int(offset)],
+        ).fetchall()
+    keys = ["ib_order_id","symbol","side","trade_date","first_fill_time","quantity","average_price",
+            "fill_count","commission","realized_pnl","order_type","flex_confirmed","last_trade_date","last_fill_time"]
+    orders = [dict(zip(keys, row)) for row in rows]
+    # Add API-observed fills that Flex has not confirmed yet. They are grouped
+    # by broker order ID and never contribute provisional P&L/commission.
+    with connect(path) as conn:
+        pending = conn.execute(
+            """SELECT COALESCE(NULLIF(n.ib_order_id,''),'API:'||n.exec_id), n.symbol, n.side,
+                      MIN(n.execution_time), SUM(n.quantity),
+                      CASE WHEN SUM(n.quantity)>0 THEN SUM(n.quantity*n.price)/SUM(n.quantity) ELSE 0 END,
+                      COUNT(*),
+                      CASE WHEN COUNT(n.commission)=COUNT(*) THEN SUM(n.commission) ELSE NULL END,
+                      CASE WHEN COUNT(n.realized_pnl)=COUNT(*) THEN SUM(n.realized_pnl) ELSE NULL END
+               FROM execution_notifications n
+               WHERE n.first_seen_source='IBKR_API'
+                 AND n.flex_confirmed_at_utc IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM flex_executions f WHERE f.ib_exec_id=n.exec_id)
+                 AND (?='ALL' OR n.side=?) AND (?='' OR n.symbol=?)
+               GROUP BY COALESCE(NULLIF(n.ib_order_id,''),'API:'||n.exec_id), n.symbol, n.side""",
+            (side, side, symbol, symbol),
+        ).fetchall()
+    for oid, sym, sd, dt, qty, avg, fills, commission, realized_pnl in pending:
+        orders.append({"ib_order_id": oid, "symbol": sym, "side": sd, "trade_date": str(dt or "")[:10].replace("-", ""),
+                       "first_fill_time": dt, "quantity": qty, "average_price": avg, "fill_count": fills,
+                       "commission": commission, "realized_pnl": realized_pnl, "order_type": "", "flex_confirmed": 0,
+                       "last_trade_date": str(dt or "")[:10].replace("-", ""), "last_fill_time": dt})
+    orders.sort(key=lambda x: str(x.get("last_fill_time") or x.get("last_trade_date") or ""), reverse=True)
+    return {"orders": orders[:int(limit)], "total_orders": int(total) + len(pending), "limit": int(limit), "offset": int(offset), "start_date": start_date, "side": side, "symbol": symbol,
+            "pending_flex_orders": len(pending)}
 
 
 def pnl_summary(path: Path = DB_PATH, start_date: str | None = None) -> dict:

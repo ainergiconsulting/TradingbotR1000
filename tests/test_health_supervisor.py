@@ -13,6 +13,12 @@ import health_supervisor
 
 class HealthSupervisorTests(unittest.TestCase):
     def setUp(self):
+        self._cycle_watchdog_patcher = patch.object(
+            health_supervisor, "strategy_cycle_watchdog",
+            return_value={"status": "COMPLETED", "missed": False},
+        )
+        self._cycle_watchdog_patcher.start()
+        self.addCleanup(self._cycle_watchdog_patcher.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.old_status_file = cfg.SUPERVISOR_STATUS_FILE
         cfg.SUPERVISOR_STATUS_FILE = Path(self.tmp.name) / "health_supervisor_status.json"

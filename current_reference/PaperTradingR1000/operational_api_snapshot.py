@@ -72,6 +72,14 @@ def snapshot_account_summary(ib: IB) -> list[dict[str, Any]]:
 def snapshot_positions(ib: IB) -> list[dict[str, Any]]:
     portfolio_by_key = {}
     try:
+        # IBKR may populate positions immediately while portfolio market/P&L
+        # fields arrive slightly later. Give the already-connected read-only
+        # session a short bounded chance to receive portfolio updates.
+        try:
+            if not ib.portfolio():
+                ib.sleep(1.0)
+        except Exception:
+            pass
         for item in ib.portfolio():
             contract = getattr(item, "contract", None)
             key = _position_key(getattr(item, "account", ""), contract)

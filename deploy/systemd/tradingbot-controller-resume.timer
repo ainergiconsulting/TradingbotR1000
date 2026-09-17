@@ -1,0 +1,11 @@
+[Unit]
+Description=Resume TradingbotR1000 controller before 2026-09-18 US session
+
+[Timer]
+OnCalendar=2026-09-18 11:45:00 UTC
+AccuracySec=1s
+Persistent=true
+Unit=tradingbot-controller-resume.service
+
+[Install]
+WantedBy=timers.target
