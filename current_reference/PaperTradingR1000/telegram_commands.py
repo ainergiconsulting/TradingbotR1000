@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import config as cfg
 from execution_history import load_latest_execution_history
@@ -36,11 +38,27 @@ def render_status() -> str:
         str(row.get("symbol") or "").upper(): float(row.get("quantity") or row.get("position") or 0.0)
         for row in snapshot.get("positions", []) or []
     }
-    valid_plans = list(buy_plans)
+    # A saved strategy plan is historical evidence unless it belongs to
+    # today's ET strategy cycle. Never label yesterday's BUY plan as
+    # "currently valid" merely because the JSON file still exists.
+    scan_date_et = ""
+    try:
+        scan_date_et = datetime.fromisoformat(
+            str(scan.get("timestamp_utc") or "").replace("Z", "+00:00")
+        ).astimezone(ZoneInfo("America/New_York")).date().isoformat()
+    except Exception:
+        pass
+    today_et = datetime.now(timezone.utc).astimezone(
+        ZoneInfo("America/New_York")
+    ).date().isoformat()
+    scan_is_current = bool(scan_date_et and scan_date_et == today_et)
+
+    valid_plans = list(buy_plans) if scan_is_current else []
+    stale_buy_plans = [] if scan_is_current else list(buy_plans)
     stale_sell_plans = []
     for row in sell_plans:
         symbol = str(row.get("symbol") or "").upper()
-        if live_positions.get(symbol, 0.0) > 0:
+        if scan_is_current and live_positions.get(symbol, 0.0) > 0:
             valid_plans.append(row)
         else:
             stale_sell_plans.append(row)
@@ -71,11 +89,19 @@ def render_status() -> str:
             if order_type == "LIMIT" and limit_price not in (None, ""):
                 detail += f" @ ${float(limit_price):,.2f}"
             lines.append(detail)
-    if stale_sell_plans:
-        lines.extend(["", "STALE / BLOCKED:"])
+    if stale_buy_plans or stale_sell_plans:
+        lines.extend(["", "STALE / NOT CURRENT:"])
+        for row in stale_buy_plans:
+            symbol = str(row.get("symbol") or "?").upper()
+            lines.append(f"- BUY {symbol} | previous scan; not a current broker order")
         for row in stale_sell_plans:
             symbol = str(row.get("symbol") or "?").upper()
-            lines.append(f"- SELL {symbol} | BLOCKED: no current IBKR position")
+            reason = (
+                "previous scan"
+                if not scan_is_current
+                else "no current IBKR position"
+            )
+            lines.append(f"- SELL {symbol} | BLOCKED: {reason}")
     lines.extend([
         "",
         f"Account equity (NLV): ${net_liquidation:,.2f}",

@@ -1,0 +1,912 @@
+TRADINGBOTR1000 - MASTER HISTORY
+================================
+
+Purpose
+-------
+This file is the human-readable historical record of the TradingBotR1000 project.
+It preserves the evolution of the project, the reasons behind technical and strategic choices,
+important operational events, unresolved questions, and future changes.
+
+Operating rule from 2026-08-28 onward:
+- new project history entries are appended chronologically;
+- past history is not silently rewritten;
+- corrections are recorded as subsequent corrections/clarifications;
+- passwords, tokens, API keys and other secrets must never be written here;
+- screenshots and other attachments should be referenced by file/path rather than embedded;
+- this history is operational documentation and is not intended to be committed to GitHub.
+
+======================================================================
+HISTORICAL INTRODUCTION - VERSION 1
+Recorded: 2026-08-28
+Status: reviewed working baseline; uncertainties are explicitly marked
+======================================================================
+
+1. ORIGIN AND PURPOSE OF THE PROJECT
+------------------------------------
+TradingBotR1000 is an automated trading system developed in Python, initially with the assistance
+of OpenAI Codex in a local Windows environment.
+
+The project was created to transform a rule-based quantitative trading strategy into a system
+capable of autonomously handling the operational cycle: market-data preparation and validation,
+signal identification, position sizing, order planning and transmission, execution monitoring,
+reconciliation, health monitoring and reporting.
+
+Development and early testing began locally on Windows. The system was later transferred to a
+Hetzner Ubuntu/Linux server, which is now the primary operational environment. The architectural
+goal is that the bot can operate continuously without depending on the user's personal PC being
+powered on.
+
+TradingBotR1000 currently operates exclusively in Interactive Brokers (IBKR) PAPER trading. The
+paper phase is intended to validate not only the strategy but the complete operational system:
+IBKR connectivity, scheduling, data availability, sizing, order transmission, failure handling,
+restart behaviour, reconciliation, reporting and remote control.
+
+The required duration of the paper-trading validation period has not yet been finally defined.
+Any future transition to LIVE trading must require explicit validation and authorization and must
+not occur automatically merely because development is complete.
+
+
+2. ORIGIN OF THE TRADING STRATEGY
+---------------------------------
+The strategy is a long-only mean-reversion strategy for US equities. It was reconstructed from a
+transcript of a Rayner Teo educational video supplied as a project source.
+
+The core concept is to buy temporary weakness in securities that remain in a longer-term uptrend,
+seeking to capture the subsequent reversion or bounce. The source strategy explicitly buys the
+pullback without waiting for a reversal-confirmation pattern.
+
+The source strategy uses Russell 1000 stocks on a daily timeframe, with up to five simultaneous
+positions and a 20% capital allocation per position, without leverage.
+
+Source retained in the ChatGPT project history: uploaded transcript supplied on 2026-08-28.
+
+
+3. TRADING RULES CURRENTLY IMPLEMENTED
+--------------------------------------
+The following rules were verified against the code actually running on the Hetzner server on
+2026-08-28.
+
+- Universe: Russell 1000 stocks.
+- Timeframe: daily.
+- Direction: long-only.
+- Configured strategic investable capital: 100% of Net Liquidation Value.
+- Strategic liquidity reserve: 0%.
+- Position allocation: 20% of investable capital per position.
+- Maximum simultaneous positions: 5.
+- Leverage: not allowed by the strategy.
+- Trend filter: closing price above the 200-day simple moving average.
+- Pullback condition: closing price below the lower 20-day Bollinger Band using 2.5 standard
+  deviations.
+- Entry price: buy limit at 97% of the signal-day close (3% below that close).
+- Ranking: if valid candidates exceed available position slots, rank by price appreciation over
+  the previous 150 days and prefer the strongest candidates.
+- Exit indicator: 2-period RSI.
+- RSI exit threshold currently coded: cross above 50.
+- Time exit: maximum holding period of 10 trading days.
+
+The source video also states that the daily RSI signal is only confirmed when the market closes,
+so the associated exit is acted on at the next market opening rather than after-hours.
+
+IMPORTANT OPEN QUESTION - RSI 50 VS RSI 60:
+The user remembers that the historical backtest may have changed the exit threshold from RSI 50
+to RSI 60. However, on 2026-08-28 both the production code and its tests used RSI 50, which is also
+the value in the original video strategy. The RSI=60 recollection must therefore not be treated as
+confirmed history until the original backtest results or earlier project evidence are recovered.
+The production parameter must not be changed on memory alone.
+
+
+4. BACKTEST AND CHANGES FROM THE SOURCE STRATEGY
+------------------------------------------------
+A historical backtest was conducted using approximately ten years of market data downloaded from
+Massive. The purpose was to validate and, where justified, refine the source strategy before and
+during development of the automated system.
+
+The user recalls that the principal, and possibly only, strategy-level change produced by the
+backtest was an RSI exit threshold of 60 rather than 50. This remains UNVERIFIED for the reason
+recorded in Section 3.
+
+Until the original backtest reports, scripts and/or historical development records are reviewed,
+this file intentionally does not invent or reconstruct backtest conclusions that cannot be proven.
+
+
+5. CAPITAL PROTECTION AND OPERATIONAL SIZING
+--------------------------------------------
+An important distinction was introduced during development between strategic investable capital
+and cash that IBKR can actually accept for new orders.
+
+The strategy is configured to allow 100% of capital to be investable, but this does not authorize
+the bot to submit aggregate new orders exceeding the funds actually spendable at the broker.
+
+On 2026-08-28 the order-sizing logic was corrected so that the operational buy budget is capped by
+the minimum of:
+
+- configured/effective investable capital;
+- cash;
+- Available Funds;
+- Buying Power.
+
+This preserves the 100%-investable strategy while preventing planned orders from being sized above
+currently spendable funds. The correction was validated by the relevant automated test suite,
+which passed 55/55 applicable operational tests before the controller was restarted with the new
+code.
+
+
+6. HETZNER / IBKR OPERATIONAL ARCHITECTURE
+------------------------------------------
+Primary server:
+- Provider: Hetzner.
+- Operating system: Ubuntu/Linux.
+- Hostname used operationally: IBKR001.
+- Main Linux operator account: ibkradmin.
+
+Project root:
+/home/ibkradmin/trading/TradingbotR1000
+
+Current bot runtime directory:
+/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000
+
+The system uses systemd services to keep its components running independently of an interactive
+terminal session. Services observed in the current deployment include the operational controller,
+IB Gateway, Telegram listener, health supervisor, Xvfb/Fluxbox/VNC support services and related
+supervision components.
+
+IBKR paper connectivity is provided through IB Gateway on API port 4002.
+
+Different IBKR API client IDs are deliberately separated between automated trading, manual control
+and read-only/reconciliation functions to reduce the risk of client-ID collisions. In the current
+server generation, IDs observed include automated client 1000, manual console client 1001 and a
+read-only/reconciliation client 1002.
+
+Health monitoring records controller heartbeat, IBKR connection status, gateway status and API
+socket status. The operational objective is unattended recovery where safe, while failing closed
+for conditions that could make order execution unsafe.
+
+
+7. TELEGRAM REMOTE INTERFACE
+----------------------------
+Telegram is integrated as a remote monitoring and operational-control channel.
+
+Its purpose extends beyond trade notifications: from a mobile device the operator should be able
+to inspect system status, IBKR status, portfolio/account information and relevant operational
+results without opening an SSH session.
+
+The project has progressively introduced or improved Telegram reporting for areas including:
+- system status and heartbeat;
+- IBKR connectivity/disconnect events;
+- portfolio/account summary;
+- investable capital mode and amount;
+- scan completion;
+- planned/submitted/rejected or skipped orders;
+- operational health information.
+
+A controlled IB Gateway restart mechanism has also been developed for Telegram. Sensitive actions
+are intended to require stronger controls than read-only commands; the gateway-restart design uses
+explicit confirmation and a short confirmation expiry window rather than an unrestricted remote
+shell command.
+
+Telegram credentials and tokens are secrets and must remain outside this history and outside Git.
+
+
+8. LOCAL MANUAL CONTROL CONSOLE
+-------------------------------
+A Windows Manual Control Console is retained as a separate operator interface.
+
+Local launcher:
+C:\TradingbotR1000_Remote\ManualConsole.bat
+
+The console connects to the PAPER IB Gateway and, in the screenshot supplied on 2026-08-28, reports
+connection to 127.0.0.1:4002 using manual client ID 1001.
+
+The visible menu contains:
+1.  Account Summary
+2.  Positions
+3.  Open Orders
+4.  BUY Limit
+5.  SELL Limit
+6.  BUY Market
+7.  SELL Market
+8.  Cancel Selected Order
+9.  Cancel All Orders
+10. Liquidate Selected Position
+11. Emergency Liquidate All Positions
+12. Market/Liquid-Hours Status
+13. Investable Capital Control
+14. Latest Broker Execution History
+0.  Exit
+
+The console explicitly warns that manual orders are sent directly to the broker and do not use the
+automated strategy logic; manual trades also do not automatically update the strategy state file.
+
+A similar console worked reasonably well for the predecessor bot, but the user has not yet fully
+validated the current TradingBotR1000 Manual Console end-to-end in the present Hetzner architecture.
+It must therefore remain recorded as a feature requiring operational acceptance testing, not as a
+fully certified capability.
+
+
+9. GIT AND GITHUB ARCHITECTURE
+------------------------------
+The TradingBotR1000 project contains a Git repository on the Hetzner server.
+
+Current branch: main
+Configured remote:
+git@github.com:ainergiconsulting/TradingbotR1000.git
+
+Earlier development history also exists in the Windows/local repository and in GitHub. During the
+Linux migration and subsequent debugging, the actual working code on Hetzner became more current
+than the last committed/pushed repository state.
+
+For this reason the project must NOT be refreshed by blindly cloning an older GitHub state over the
+operational server. The Hetzner working tree must first be reviewed, cleaned, tested and consolidated
+as the canonical operational state, after which controlled commits and pushes can bring GitHub back
+into alignment.
+
+Large runtime data, logs, reports, generated state, temporary backups and secrets are not intended
+for Git. The data directory alone is hundreds of megabytes and is intentionally excluded. Telegram
+tokens, local credential/config files and other secrets are also excluded and must never be pushed.
+
+
+10. SSH, SERVER ACCESS AND AUTHORIZATION MODEL
+----------------------------------------------
+Traditional administrative access to the server is through SSH using the Linux account ibkradmin.
+
+The project deliberately separates normal bot operation from server-administration privileges.
+The objective is to avoid granting root-level power to an automated component when a narrower
+permission is sufficient.
+
+The same least-privilege principle is applied to remote AI access. Operational automation should
+be powerful enough to maintain the project, but access to unrelated home-directory content,
+credentials, operating-system administration and root actions should remain separately controlled.
+
+
+11. SENTINELX INTRODUCTION
+--------------------------
+SentinelX was introduced in August 2026 as a controlled bridge between ChatGPT and the Hetzner
+server.
+
+The immediate problem it addresses is the previous manual workflow:
+ChatGPT -> copy command -> SSH terminal -> execute -> copy output -> paste output into ChatGPT.
+
+With SentinelX, ChatGPT can directly execute permitted server operations, inspect permitted files
+and services, read the results and, where explicitly authorized, edit project files.
+
+Security choices made during installation/configuration include:
+- SentinelX runs as its own Linux service account named sentinelx;
+- it was installed without general passwordless sudo (SENTINELX_SKIP_SUDO=1);
+- the project path was explicitly granted read/write access in SentinelX policy;
+- Linux ACLs were added so the sentinelx account can traverse the necessary parent path and read/
+  write the TradingBotR1000 project without receiving unrestricted access to the entire ibkradmin
+  home directory;
+- ChatGPT was subsequently configured not to request repeated user confirmation for every SentinelX
+  operation, while the server-side SentinelX policy and Linux permissions remain the actual access
+  boundaries.
+
+SentinelX is not itself the final AI Operator. It is the secure server execution/communication layer
+on which a more general AI-assisted operating system for this and future projects can be built.
+
+
+12. PC + MOBILE OPERATIONS AND THE FUTURE AI OPERATOR
+------------------------------------------------------
+A core project requirement is that operation and maintenance must not depend on a single Windows PC.
+
+The system must progressively be operable from both PC and mobile devices. This includes monitoring,
+alerting, portfolio/order inspection, diagnosis and, within controlled permissions, maintenance and
+recovery actions.
+
+Telegram is one mobile operational interface. SentinelX provides remote technical access from
+ChatGPT to the Linux server. The planned AI Operator should combine these concepts into a simpler,
+user-friendly interface in which the user can also paste text and images while the agent handles the
+underlying server interactions rather than requiring manual command copying.
+
+The AI Operator must not be hard-wired to TradingBotR1000. It should be reusable if the user creates
+a second trading bot, changes trading strategy, or operates another server-side project.
+
+The intended separation is therefore:
+
+TradingBotR1000
+    = one specific automated trading project and strategy
+
+AI Operator
+    = reusable management/maintenance layer able to operate TradingBotR1000 and future projects
+
+A further requirement is durable project memory independent of the user's PC. This Master History
+TXT file is the first human-readable component of that memory. The future agent should maintain it
+automatically so that the reasoning and sequence by which changes were conceived, tested, accepted,
+rejected or corrected are not lost.
+
+======================================================================
+END OF HISTORICAL INTRODUCTION - VERSION 1
+======================================================================
+
+======================================================================
+2026-08-28 - CHAT CONTINUITY START
+======================================================================
+USER
+Da questo momento tutto il testo della chat viene registrato automaticamente sul file history. Decidi tu come farlo nel modo piu efficiente. L importante e che venga fatto senza bisogno che te lo richieda ancora. Poi procediamo con l analisi di cosa e successo oggi e cerchiamo di capire perche per il 4o giorno di seguito questo bot non riesce a piazzare ordini.
+
+ATTACHMENT
+Screenshot Telegram fornito dall operatore: scan_completed con Selected candidates 5, Planned orders 5, Rejected/skipped 4, Broker submitted 1, Operational buy budget $1,003,112.65; successivo /portfolio con PAPER, Net liquidation $1,005,293.23, Cash/Available funds $1,003,077.95, Positions 0. L allegato resta disponibile nella conversazione ChatGPT; copia server da implementare con il futuro meccanismo automatico allegati.
+
+ACTION / INVESTIGATION STARTED
+Avviata diagnosi read-only del quarto giorno consecutivo senza posizioni eseguite. Nessun ordine manuale inviato e nessun servizio di trading modificato in questa fase.
+
+======================================================================
+2026-08-28 - HISTORY POLICY UPDATE AND CURRENT INCIDENT FOCUS
+======================================================================
+USER
+Ok. Lasciamo stare le failure dei gg precedenti e concentriamoci sulla risoluzione del problema e quindi su quanto emerso oggi. Per quanto riguarda gli allegati non ritengo critico tenerli a record. Possono occupare molta memoria senza dare valore aggiunto. Quindi concentriamoci su logica e funzionamento. Il bot stesso poi dovrebbe mantenere un log delle sue attivita se non erro.
+
+DECISION
+Da questo punto il Master History privilegia testo, decisioni, logica, modifiche e risultati tecnici. Gli allegati/screenshot non vengono copiati e conservati sul server salvo eccezioni future esplicitamente motivate. Per gli eventi operativi del bot si usano come fonte primaria i log e i report durevoli generati dal bot stesso.
+
+ASSISTANT / TECHNICAL FINDING
+Confermato che il bot mantiene gia una propria evidenza operativa durevole. Le fonti principali sono logs/bot_log.txt, state/automated_orders.json, reports/automated_execution_report.json, reports/daily_scan_report.json, reports/reconciliation_report.json, reports/trade_log.csv e state/trade_spool.jsonl. Il Master History non deve duplicare integralmente tali dati: conserva invece decisioni, diagnosi, modifiche, motivazioni e risultati, rimandando ai log del bot per il dettaglio operativo.
+
+CURRENT INCIDENT - ROOT CAUSE AREAS IDENTIFIED
+1. automated_broker.py considerava sufficiente chiamare ib.placeOrder(), attendere 2 secondi e leggere anche PendingSubmit come ordine broker submitted. Il 28 agosto FITB e rimasto PendingSubmit con perm_id=0 e remaining=0, mentre IBKR successivamente mostrava zero open orders, zero positions e zero executions. Quindi il contatore Telegram Broker submitted era troppo ottimistico.
+2. automated_order_store.py considerava uno stato PendingSubmit/Submitted persistito localmente come prova sufficiente per bloccare ordini successivi, anche quando la lettura live IBKR non mostrava alcun ordine o posizione. Inoltre il ramo duplicate prevention sovrascriveva il broker_status persistito con NotTransmitted, mescolando decisione anti-duplicato e stato broker.
+3. La Manual Console contiene gia un pattern piu robusto wait_for_trade_outcome, confermando che l automatic broker deve attendere un esito broker significativo anziche una pausa fissa.
+
+CHANGES APPLIED
+- automated_broker.py: aggiunto wait fino a 8 secondi per acknowledgement broker; solo PreSubmitted, Submitted, PartiallyFilled o Filled contano come broker submitted. PendingSubmit non confermato entro timeout diventa Unconfirmed e viene riportato tra rejected/skipped; vengono anche lette le entry di errore del Trade IBKR.
+- automated_broker.py: duplicate prevention non modifica piu lo stato broker persistito.
+- automated_order_store.py: gli stati attivi persistiti localmente non bloccano piu da soli un nuovo ordine quando il broker live non mostra posizione/open order; restano bloccanti prove di Filled/PartiallyFilled. Aggiunto Unconfirmed tra gli stati finali.
+- test aggiornato per verificare che un Submitted locale stale non blocchi senza evidenza live broker.
+
+VALIDATION
+- test_automated_order_workflow.py: 13/13 OK.
+- suite mirata trading_engine + automated_order_workflow + strategy_configuration + telegram_alerts + telegram_monitoring: 25/25 OK.
+- discovery generale: 58 test rilevati, 4 errori dovuti a moduli/backtest assenti dal server (backtests e short strategy), non a regressioni delle modifiche correnti.
+
+======================================================================
+2026-08-28 - SENTINELX SERVICE CONTROL PERMISSIONS
+======================================================================
+USER
+Requested that ChatGPT/SentinelX be able to manage TradingBot services directly so routine restarts no longer require manual SSH commands.
+
+ACTION / RESULT
+SentinelX policy was updated and reloaded successfully. Capabilities now report 7 managed services, including the four TradingBot services. A direct restart of tradingbot-controller.service was then attempted through SentinelX. SentinelX policy accepted the service, but Linux sudo denied the restart because SentinelX was deliberately installed with SENTINELX_SKIP_SUDO=1 and the sentinelx user has no passwordless sudo rights.
+
+DECISION
+Preserve the no-general-sudo security model. If direct service restart is required, grant a narrowly scoped sudoers rule only for approved systemctl actions on the TradingBot services, rather than NOPASSWD: ALL.
+
+======================================================================
+2026-08-28 - CONTROLLED PAPER ORDER ACK TEST
+======================================================================
+USER
+Ok procediamo.
+
+ACTION / RESULT
+Eseguito test controllato sul conto PAPER tramite client ID manuale 1001, separato dal controller automatico. Ordine di prova: BUY 1 FITB LIMIT 53.3112. Scopo: verificare se IBKR accetta realmente un ordine API dopo le modifiche software, senza affidarsi al solo ritorno di placeOrder().
+
+Esito: connessione API riuscita, ma dopo 8 secondi l ordine e rimasto PendingSubmit con orderId=4, permId=0, filled=0, remaining=0 e nessun messaggio di errore iniziale. Il tentativo di cancellazione ha prodotto errore IBKR 10147: OrderId 4 that needs to be cancelled is not found. Nessuna posizione e stata aperta.
+
+Conclusione tecnica: il problema non e piu dimostrabilmente nella sola logica del bot; anche un ordine minimale trasmesso fuori dal workflow automatico non raggiunge il broker. Questo indica un blocco a livello IB Gateway/API configuration o sessione di trading. La documentazione IBKR conferma che l impostazione readOnlyApi impedisce modifiche tramite API. Va verificata la configurazione effettiva di IB Gateway, in particolare Read-Only API / permessi di trading API.
+
+Nota: jts.ini mostra ApiOnly=true, TrustedIPs=127.0.0.1, tradingMode=p. Il profilo IB Gateway principale e cifrato (ibg.xml), quindi il flag Read-Only API non e leggibile direttamente dal file XML.
+
+======================================================================
+2026-08-28 - CONTINUATION
+======================================================================
+USER
+Possiamo quindi procedere?
+
+ASSISTANT / ACTION
+Confermato che i servizi VNC/Xvfb/Fluxbox/IB Gateway sono attivi. Verificato che sull'host non risultano disponibili xdotool/scrot/import per pilotare o catturare direttamente la GUI da SentinelX. Ricerca testuale dei file JTS non ha esposto un parametro leggibile Read-Only API; il profilo IB Gateway resta cifrato. Prossimo passo operativo: verifica manuale via VNC della checkbox API Read-Only API, poi ripetizione del test paper da 1 azione FITB con controllo acknowledgement reale IBKR.
+
+======================================================================
+2026-08-28 - ROOT CAUSE IDENTIFIED FOR API ORDER FAILURE
+======================================================================
+USER
+Operator asked to continue the investigation without relying on the Read-Only API hypothesis, which the operator states had already been disabled.
+
+DIAGNOSIS
+A controlled IBKR what-if order for FITB at the strategy-generated price 53.3112 returned API error 110: "The price does not conform to the minimum price variation for this contract." The strategy was generating four-decimal limit prices by multiplying the signal close by 0.97 without normalizing to the US equity tick size.
+
+A second controlled 1-share paper order at a valid cent price (53.31) but with the default blank TIF was immediately cancelled by IB Gateway with warning/error 10349: "Order TIF was set to DAY based on order preset." This showed a second submission defect: the bot did not explicitly set the time-in-force.
+
+A third controlled 1-share paper order at 53.31 with tif=DAY was accepted by IBKR, reached status Submitted, received permId 54417320, and was then cancelled successfully. This proves that the API connection and paper account can place orders and that Read-Only API is not required to explain today's failure.
+
+FIXES APPLIED
+1. strategy.buy_limit_price now rounds generated Russell 1000 entry limit prices to 2 decimal places so they conform to the standard US equity cent increment.
+2. automated_broker now explicitly sets tif="DAY" for both LIMIT and MARKET orders.
+3. Existing acknowledgement and stale-duplicate fixes remain in place: PendingSubmit alone is not counted as broker acceptance, and stale locally persisted Submitted/PendingSubmit states do not block a new order when live IBKR has no position/open order.
+4. Targeted test suite passed 25/25 after updating the expected rounded price.
+5. tradingbot-controller.service restarted successfully and is running the corrected code from 2026-08-28 15:27:42 UTC (PID 166969 at verification).
+
+CONCLUSION
+The principal causes of today's failed submissions were invalid limit-price precision and missing explicit TIF, not insufficient capital and not proven Read-Only API. A direct paper-order acceptance test with corrected price precision and TIF succeeded.
+
+======================================================================
+2026-08-28 - FINAL ORDER-CONSTRUCTION VERIFICATION
+======================================================================
+USER
+Ok procedi
+
+ACTION / RESULT
+Eseguita verifica finale non-transmitting del piano ordini corrente contro account PAPER live. La prima verifica ha mostrato che il daily_scan_report di oggi, essendo stato generato prima della correzione, conteneva ancora prezzi a 4 decimali. E' stata quindi aggiunta una seconda normalizzazione difensiva in automated_broker._buy_intents: i prezzi limite vengono arrotondati ai centesimi anche quando il report di scan e' legacy/pre-fix. Questo garantisce che sia i nuovi scan sia eventuali report gia' esistenti producano ordini conformi al tick standard delle azioni USA sopra $1.
+
+E' stato inoltre rilevato un ordine test FITB da 1 azione ancora aperto presso IBKR PAPER (permId 54417319). L'ordine e' stato cancellato immediatamente e la successiva verifica ha confermato zero open orders e zero posizioni.
+
+Piano corrente dopo la correzione, senza trasmissione:
+- STLD: 895 @ 224.08 DAY, estimated notional 200551.60
+- R: 825 @ 243.02 DAY, estimated notional 200491.50
+- VIK: 2278 @ 88.05 DAY, estimated notional 200577.90
+- ST: 4835 @ 41.49 DAY, estimated notional 200604.15
+- FITB: 3763 @ 53.31 DAY, estimated notional 200605.53
+Nessuna rejection nel piano. Tutti gli ordini generati hanno TIF=DAY e transmit=True nella costruzione IBKR; in questa verifica NON e' stato chiamato placeOrder per il piano completo.
+
+TEST
+Suite mirata: 25/25 test OK dopo le correzioni.
+Controller riavviato e servizi principali active.
+
+GIT
+Aggiunti alla .gitignore pattern per i backup locali di manutenzione e history/. Il working tree ora mostra solo modifiche reali e il nuovo telegram_gateway_control.py. Tentativo di git fetch origin main fallito con 'Host key verification failed' perche' l'accesso SSH GitHub dal contesto SentinelX/server non e' ancora configurato/verificato. Nessun commit o push e' stato eseguito per evitare di procedere senza prima verificare lo stato remoto.
+
+======================================================================
+2026-08-28 - VERIFICA STATO DOPO CORREZIONI
+======================================================================
+USER
+Pf verifica
+
+VERIFICA
+- Account IBKR: PAPER.
+- Net Liquidation: 1,005,260.02 USD.
+- Cash / Available Funds: 1,003,044.74 USD.
+- Posizioni aperte: 0.
+- Ordini aperti: 0.
+- Servizi tradingbot-controller, health-supervisor, ibgateway e telegram: tutti active.
+- Health supervisor: OK; IBKR connection/live API/socket: CONNECTED; Gateway: RUNNING.
+- Controller: IDLE/RUNNING in attesa del prossimo ciclo.
+- Prossimo ciclo: 2026-08-31T13:28:00Z (09:28 New York).
+- Git working tree ancora non consolidato: modifiche correnti e nuovo telegram_gateway_control.py non ancora committati/pushati.
+- Remote origin resta git@github.com:ainergiconsulting/TradingbotR1000.git.
+- Nota Git: i test SSH eseguiti via SentinelX girano come utente Linux sentinelx, non ibkradmin; quindi il precedente Host key verification failed non prova che l'accesso GitHub dell'utente ibkradmin sia rotto. Va verificato separatamente nel corretto contesto utente.
+
+2026-08-28 - GITHUB ACCESS VERIFICATION ATTEMPT
+USER asked to verify GitHub access in the correct Linux user context before commit/push.
+Findings: repository is owned by ibkradmin:ibkradmin. SentinelX runs as user sentinelx. The previous host-key failure was therefore not authoritative for ibkradmin. A direct attempt to switch context with sudo -u ibkradmin failed because SentinelX has intentionally narrow sudo rights limited to selected systemctl actions; it cannot impersonate ibkradmin or read /home/ibkradmin/.ssh. No SSH key material was exposed or permissions widened. Conclusion: GitHub connectivity for ibkradmin remains unverified from SentinelX and requires either one manual test as ibkradmin or a narrowly scoped delegation mechanism; do not broaden access to the private SSH key merely for this check.
+
+======================================================================
+2026-08-28 - GITHUB SSH VERIFICATION (ibkradmin)
+======================================================================
+USER / TERMINAL EVIDENCE
+From the normal ibkradmin shell on IBKR001, the operator ran:
+  ssh -T git@github.com
+GitHub replied:
+  Hi ainergiconsulting! You've successfully authenticated, but GitHub does not provide shell access.
+
+CONCLUSION
+SSH authentication for GitHub works correctly for the operational Linux user ibkradmin. The earlier Host key verification failure observed through SentinelX was specific to the sentinelx user context and was not evidence of a GitHub problem for ibkradmin.
+
+NEXT CHECK
+The read-only command 'git ls-remote origin HEAD' still needs to be executed from the ibkradmin repository shell to verify that the configured repository remote can be queried successfully before any commit/push workflow is enabled.
+
+[2026-08-28 17:16 UTC approx] USER provided screenshot/output of `git ls-remote origin HEAD` executed as ibkradmin. Result: `20a93a0f504c220de385bab9f07e524523d30368    HEAD`. This confirms the repository-specific GitHub remote is reachable/authenticated from the correct operational user context. Combined with prior `ssh -T git@github.com` success, GitHub SSH access for ibkradmin is fully verified. No commit or push performed in this verification step.
+
+[2026-08-28 19:02 UTC approx] HEALTH REPORTING FIX + MONDAY FAIL-CLOSED HARDENING
+User requested maximum safety for Monday's next automated cycle. Investigation confirmed Telegram /health was falsely reporting `Trading enabled: False / Configuration disabled` because gateway_status fell back to the Telegram listener process config, where EXECUTE_ORDERS defaults false. The authoritative controller runtime_health already reported TRADING_ENABLED and execute_orders=true. gateway_status.runtime_execute_orders() was changed to accept fresh runtime_health TRADING_ENABLED + execute_orders=true as authoritative. Telegram service restarted. Relevant gateway/Telegram tests passed.
+
+A more serious readiness blocker was then discovered: the local daily market-data universe used by the strategy is stale. Current daily_scan_report from 2026-08-28 used market_data_latest_date=20260819; the five signals and signal_date were therefore based on 19-Aug data. activation preflight's prior stale check only compared symbols against the newest date inside the local dataset, so an entirely stale dataset could incorrectly pass. The server currently has no MASSIVE_API_KEY configured in project .env, shell profiles, or /etc/environment; no automated Massive refresh was found in controller/systemd.
+
+Safety hardening applied: trading_engine now computes a strict expected latest completed weekday in America/New_York and marks market_data_compliance INVALID with reason market_data_latest_date_not_current if the dataset latest date does not match. This is intentionally fail-closed; on exchange holidays it may block until freshness is explicitly confirmed rather than trading stale data. Current verification: local latest=20260819, expected=20260827, would_block=True. 35 targeted tests passed. Controller restarted with the guard loaded. This means Monday cannot silently place orders using the stale dataset; data freshness must be fixed before the acceptance run.
+
+Startup validation and activation preflight were rerun with TRADINGBOTR1000_ENABLE_AUTOMATED_PAPER_EXECUTION=1; startup validation reports execute_orders=true and no config/dependency issues. IBKR connection/reconciliation remain healthy. The next blocker to resolve before Monday is the daily market-data update path.
+
+[2026-08-29 02:00-02:05 UTC] DATA REFRESH ARCHITECTURE CORRECTION
+Operator clarified that TradingbotR1000 must use IBKR, not Massive, for ongoing daily market-data refresh. Massive subscription is no longer available.
+
+Implemented and verified an incremental IBKR daily-bar refresher (`ibkr_daily_bar_refresh.py`) using a dedicated IBKR client ID 1005. A live sample refresh of 5 Russell 1000 symbols successfully filled the gap from the stale dataset and then advanced them through the completed 2026-08-28 session: 5/5 symbols updated, 35 new rows total across the two validation passes, zero failures. The refresher determines the expected completed session from IBKR/SPY data so weekends/market holidays are not inferred solely from a weekday calendar.
+
+A full-universe gap-fill for the complete operational Russell 1000 symbol set was launched in the background as SentinelX job job_a2a304395cbb. Final all-symbol result is still pending at this record point; no claim of completion is made yet.
+
+The operational controller was modified to run the IBKR refresh automatically at 08:30 America/New_York on each weekday, before the 09:28 strategy cycle. It retries up to 3 times. On failure it writes persistent failure state and sends one Telegram alert for that daily attempt; it does not repeatedly alert during the day. Trading remains fail-closed because the scan now requires a successful IBKR refresh status and dataset latest_date matching IBKR's expected latest completed session before BUY submission is allowed.
+
+The controller and Telegram listener were restarted to load the new logic. Tests: 35 relevant unit tests passed; refresh scheduling checks returned Monday 08:29 ET=False, Monday 08:30 ET=True, Sunday=False.
+
+[2026-08-29] Weekend readiness hardening. Full IBKR gap-fill completed across the Russell 1000 universe: 1016/1018 symbols are current through session 20260828. Two symbols remain unresolved: LBRDK and LBRDA. IBKR reqMatchingSymbols finds both only on exchange VALUE and SMART qualification returns error 200/no security definition; they are treated as an acceptable unresolved set (maximum tolerance 3) and excluded from blocking the strategy. The refresher now reports DEGRADED_ACCEPTABLE for <=3 contract_not_qualified failures, while any broader/stale/invalid failure remains fail-closed. Controller retries incomplete/degraded refresh once per calendar day through the weekend at/after 08:30 ET and sends one Telegram warning/failure alert for that day. Monday trading may proceed if the dataset is current and the only unresolved symbols are within this validated <=3 contract-resolution tolerance.
+
+IB Gateway weekend/restart verification: systemd unit has Restart=always and Jts/jts.ini contains AutoRestart=1 and Restart=OK. A controlled systemd restart was performed. The IB Gateway Java process restarted automatically, but the API socket did not return after >80 seconds; health supervisor reports Gateway=RUNNING but Live API=DISCONNECTED and API socket=CONNECTION_REFUSED. This demonstrates that a process-level restart is not equivalent to IBKR's in-session AutoRestart and currently leaves the Gateway awaiting authentication. Official IBKR documentation states that TWS/IB Gateway can auto-restart daily Monday-Saturday without reauthentication when AutoRestart is enabled, but after the Saturday-night weekly reset a user must re-authenticate on Sunday. Therefore weekly authentication cannot be assumed fully unattended with the supported IB Gateway flow. The controlled restart has left the current Gateway session unauthenticated; operator login via VNC is required to restore the API session before further live checks.
+
+[2026-08-29] Market-data/universe hardening requested by operator.
+- Increased non-blocking unresolved IBKR contract tolerance from 3 to 10 symbols. This tolerance applies only when every remaining failure is contract_not_qualified; broader/stale-data failures remain blocking.
+- Implemented weekly official iShares IWB holdings refresh from https://www.ishares.com/us/products/239707/ishares-russell-1000-etf/latest-holdings.csv. Refresh is validated (950-1100 unique USD equity symbols), backed up, and atomically replaces IWB_holdings.csv only after validation. Failure is non-blocking: the previous validated universe remains active and a Telegram error is emitted.
+- First live universe refresh succeeded: official holdings as of Aug 27 2026, 1018 unique equity symbols. Compared with prior local file: added VMRK; removed AVB, EA, EQR, LBRDA, LBRDK, NSA, WBS. The two prior IBKR contract failures LBRDA/LBRDK therefore disappear from the current IWB universe rather than requiring an exception.
+- Controller now schedules universe refresh from 07:45 New York time when last successful refresh is >=7 days old; failed attempts are retried on subsequent days until success. IBKR daily-bar refresh remains after it at 08:30 ET, so newly-added symbols are filled before the 09:28 strategy cycle when Gateway/API is authenticated.
+- Relevant strategy/order/symbol/Telegram tests: 40/40 passed across targeted suites. Full repository discovery still contains unrelated/pre-existing errors from absent optional backtest modules and the currently unauthenticated IB Gateway after the controlled restart.
+- Controller restarted to load the new scheduling logic.
+- Security note under evaluation: operator proposed a root-only, SentinelX-inaccessible weekly IB Gateway login script. IBKR official documentation states IB Gateway/TWS requires manual credentials after the Saturday-night weekly reset and does not support headless operation; therefore an unattended credential script cannot be represented as guaranteed unless the authentication/2FA flow is proven in the actual account. A root-only systemd/timer wrapper can securely initiate Gateway and alert Telegram, but it cannot legitimately bypass IBKR-required weekly reauthentication/2FA.
+
+[2026-08-29] USER: Login IBKR ripristinato da bVNC. Ha fornito schermate del Gateway; gli allegati non vengono archiviati nel Master History per policy concordata.
+[2026-08-29] ACTION/RESULT: Verifica server dopo login: porta API 4002 LISTENING; connessione IBKR read-only riuscita con client market-data 1005; account PAPER riconosciuto. Avviato refresh completo dati giornalieri dell'universo IWB corrente da IBKR, senza trasmissione ordini, job job_669c5c824a41.
+[2026-08-29] ASSISTANT: Confermato ripristino API e avvio refresh completo; previsto controllo globale dopo completamento e successivo lavoro IBC.
+[2026-08-29] USER: Chiede verifica completamento refresh e ricorda la regola permanente di aggiornare sempre il file TXT Master History.
+[2026-08-29] ACTION/RESULT: Job job_669c5c824a41 terminato con successo (exit 0) in 16.01 s. Refresh IBKR status OK; started 2026-08-29T07:06:33Z, completed 07:06:48Z; expected latest completed session 20260828; symbols_targeted=1017; symbols_updated=1; symbols_already_current=1016; rows_added=20; failure_count=0; acceptable_unresolved_symbols=[]; trading_may_proceed=true. Il nuovo simbolo mancante e' stato quindi aggiornato e l'intero universo operativo corrente risulta coperto senza failure nel refresh.
+[2026-08-29] RECORD-KEEPING: Confermata nuovamente come istruzione permanente la registrazione automatica nel file /home/ibkradmin/trading/TradingbotR1000/history/TradingBotR1000_Master_History.txt di ogni turno rilevante, azione e risultato, senza segreti e senza archiviare normalmente gli allegati.
+[2026-08-29] USER: "Per favore procedi" riferito alla preparazione/installazione IBC per rendere user-friendly e quanto piu' unattended possibile il recovery/login settimanale IBKR.
+[2026-08-29] ACTION/RESULT: Prima di modificare il Gateway e' stata riverificata la documentazione/release IBC. Ultima release ufficiale pubblicata: IBC 3.24.1, Java 17, compatibile con Gateway moderni Linux. Preflight server: /opt/IBC non presente; comando java globale non installato (Gateway usa il proprio runtime Java bundled); tradingbot-ibgateway.service ACTIVE; API 4002 LISTENING; spazio disco circa 32 GB libero. La sessione IBKR corrente e' stata lasciata intatta, senza restart.
+[2026-08-29] IMPORTANT DISCOVERY: Il maintainer ufficiale IbcAlpha annuncia il retirement di IBC dal 1 settembre 2026: dopo tale data niente ulteriore sviluppo/supporto attivo. Poiche' oggi e' 29 agosto 2026 e il componente gestirebbe credenziali/autenticazione di un sistema di trading, questo cambia la valutazione di lungo periodo. Non e' stato installato automaticamente un componente che diventera' non mantenuto tra pochi giorni. Va deciso/validato un percorso sostenibile (IBC 3.24.1 come soluzione transitoria fortemente isolata, oppure alternativa mantenuta) prima di sostituire l'avvio Gateway attualmente funzionante.
+
+[2026-08-29] USER: Autorizza a procedere con la ricerca/preparazione della soluzione mantenuta alternativa a IBC per automatizzare IB Gateway.
+[2026-08-29] RESEARCH/ACTION: Confrontate soluzioni correnti. IBC resta maturo ma retirement annunciato 2026-09-01. gnzsnz/ib-gateway-docker ed extrange/ibkr-docker sono attivi ma dipendono ancora da IBC. IBeam non automatizza TWS/IB Gateway, ma Client Portal Gateway. IBGA offre automazione headless/TOTP ma ha base piu piccola e automazione xdotool/JAuto. ibg-controller e' un nuovo replacement IBC specifico per headless Docker IB Gateway: Python + Java in-JVM agent, supporto paper cold-start verificato, IB Key push in wait/approval mode, TOTP single-method verificato, API config/restart/reconnect; immagini firmate e digest-pinnable. Limite corrente: multi-method 2FA solo parziale. Essendo progetto giovane, non viene ancora messo in produzione alla cieca prima del ciclo di lunedi.
+[2026-08-29] SERVER PREFLIGHT: Hetzner x86_64; Docker CLI non installata (docker non trovato; docker.service inactive); Gateway corrente resta active; API 4002 resta LISTENING; jts.ini Peer=cdc1.ibllc.com:4001, AutoRestart=1, Restart=OK. Nessuna modifica o restart effettuato al Gateway funzionante.
+[2026-08-29] DECISIONE TECNICA PROVVISORIA: preparare una migrazione isolata/testabile, mantenendo il Gateway attuale come rollback. Non introdurre credenziali nel progetto TradingBot/SentinelX e non interrompere la sessione corrente finche il nuovo stack non e' pronto e validato.
+
+[2026-08-29] USER: Precisa che il riavvio/autenticazione settimanale IBKR avviene tra sabato e domenica, quindi fra poche ore; conferma che siamo sempre in PAPER e autorizza a provare ibg-controller.
+[2026-08-29] ACTION/RESEARCH: Verificato il progetto corrente ibg-controller (code-hustler-ft3d). E' un replacement community di IBC per IB Gateway headless Docker; PAPER cold start verificato dal progetto, IB Key push supportato in wait mode (richiede approvazione umana sul telefono), multi-method 2FA fail-loud. Il progetto risulta aggiornato il 26 agosto 2026. Quick start ufficiale usa TRADING_MODE=paper, TWS_SERVER_PAPER e mapping host 4002 -> container 4004. Il nostro Peer PAPER corrente e' cdc1.ibllc.com:4001.
+[2026-08-29] ACTION/PREFLIGHT: Hetzner x86_64; tradingbot-ibgateway.service active; API 4002 LISTENING; AutoRestart=1; Docker non installato/inactive. Repository ibg-controller raggiungibile, HEAD cb5ff4e34f790b48d455fed17db59ddf79d6f9e1. Gateway corrente lasciato intatto.
+[2026-08-29] ACTION/RESULT: Tentata installazione Docker via SentinelX con sudo non-interattivo. Bloccata correttamente: sudo richiede password/TTY; SentinelX dispone solo del sudo ristretto per specifiche azioni systemctl TradingBot e non puo' installare pacchetti. Nessuna modifica al Gateway e nessuna interruzione API. Per proseguire con ibg-controller serve una singola installazione Docker eseguita con privilegi amministrativi dall'utente oppure una temporanea autorizzazione sudo specifica; non verranno richieste o memorizzate credenziali IBKR in chat/history.
+
+[2026-08-29] USER: Sta provando a collegarsi al server con ConnectBot ma il server non risponde; ipotizza maintenance del sabato.
+[2026-08-29] ACTION/RESULT: Verifica remota via SentinelX: host raggiungibile (pong, agent 0.11.11), uptime 7 giorni 23:48, SSH service active e in ascolto su 0.0.0.0:22 e [::]:22; tradingbot-ibgateway.service active; API IBKR 4002 in ascolto. Quindi il server Hetzner non risulta in maintenance/offline e SSH lato server e' operativo. Il problema ConnectBot e' verosimilmente nel percorso di connessione/client/rete/IP/porta, da diagnosticare senza modificare il server.
+
+[2026-08-29] USER: Fornisce screenshot ConnectBot. Host configurato ibkradmin@116.203.73.79:22. ConnectBot riporta ETIMEDOUT verso 116.203.73.79 port 22 (anche riferimento IPv4-mapped ::ffff:116.203.73.79).
+[2026-08-29] ACTION/RESULT: Verifica server: eth0 UP con IPv4 pubblico 116.203.73.79/32, quindi l'IP ConnectBot e' corretto; default route presente; ssh.service active (running), listener SSH gia' verificato su 0.0.0.0:22/[::]:22. Il timeout avviene prima dell'autenticazione SSH e indica traffico TCP/22 che non raggiunge il demone o risposta filtrata lungo il percorso (rete mobile/Wi-Fi/firewall esterno), non password/chiave errata. Nessuna modifica server effettuata.
+
+[2026-08-29] USER: Connessione ConnectBot riuscita, probabilmente il Wi-Fi precedente era il problema. Ha eseguito il comando sudo apt update && sudo apt install -y docker.io docker-compose-v2. Screenshot mostra installazione completata e prompt ibkradmin; needrestart ha differito il restart di tradingbot-ibgateway.service, quindi il Gateway non e' stato riavviato.
+[2026-08-29] ACTION/RESULT: Verifica server dopo installazione: Docker 29.1.3, Docker Compose 2.40.3, docker.service active+enabled; tradingbot-ibgateway.service ancora active; API 4002 ancora LISTENING. SentinelX non ha accesso al socket /var/run/docker.sock (docker ps -> permission denied), coerente con policy di privilegi limitati. Nessun restart Gateway eseguito.
+
+[2026-08-29] USER: Ok. Andiamo avanti con il test ibg-controller.
+[2026-08-29] ACTION/RESULT: Consultata documentazione corrente ufficiale del progetto ibg-controller prima del deployment. Quick-start PAPER usa ghcr.io/code-hustler-ft3d/ibg-controller, TRADING_MODE=paper, TWS_SERVER_PAPER=cdc1.ibllc.com e mapping localhost 4002->container 4004; compose richiede stop_grace_period 90s. IB Key push e' supportato in wait mode (approvazione umana sul telefono); credenziali possono usare Docker-secret file variants. Il progetto raccomanda digest pinning per deployment riproducibile.
+[2026-08-29] ACTION/RESULT: Verifica locale: /var/run/docker.sock root:docker mode 660; ibkradmin NON appartiene al gruppo docker; sentinelx NON appartiene al gruppo docker. Gateway attuale active e porta 4002 LISTENING. Docker/Compose installati. Per proseguire senza concedere a SentinelX privilegi equivalenti a root via gruppo docker, serve eseguire le operazioni Docker come ibkradmin con sudo oppure predisporre un meccanismo ristretto. Nessun restart o modifica al Gateway effettuata.
+
+[2026-08-29] USER: Chiede se possiamo rimuovere quanto gia' installato per il tentativo ibg-controller.
+[2026-08-29] ACTION/RESULT: Verifica: finora ibg-controller non e' stato installato/configurato/avviato. Sono stati installati soltanto Docker 29.1.3 e Docker Compose 2.40.3. docker.service e' active. SentinelX non puo' interrogare container/immagini perche' non ha accesso al socket Docker; non risultano modifiche al Gateway. tradingbot-ibgateway.service active e API 4002 LISTENING. Proposta: rimuovere docker.io e docker-compose-v2 (ed eventuali dipendenze inutilizzate) da terminale ibkradmin, senza riavviare Gateway; verificare prima se il comando usermod per aggiungere ibkradmin al gruppo docker e' stato eseguito.
+
+[2026-08-29] USER: Osserva che Docker potrebbe essere utile in futuro, specialmente in vista del passaggio dal paper al live trading, e mette in dubbio la rimozione immediata.
+[2026-08-29] DECISION: Non rimuovere Docker per ora. Docker/Docker Compose restano installati ma non vengono usati dal TradingBot e non viene concesso accesso al socket Docker a SentinelX. La loro presenza non implica né migliora di per sé il passaggio a live trading, ma può essere utile per futuri componenti isolati (gateway controller, servizi di supporto, monitoring, test/rollback). Prima del live trading qualsiasi uso Docker dovrà essere esplicitamente validato, minimizzato e separato dal runtime critico del bot.
+
+[2026-08-29] USER: Chiede cosa rimane da fare.
+[2026-08-29] ACTION/RESULT: Stato verificato: controller, health-supervisor, ibgateway e telegram tutti active; API 4002 LISTENING. IBKR market-data refresh status OK through expected session 20260828: 1017 operational symbols, 1016 already current + 1 updated, failures 0, trading_may_proceed true. Official IWB universe refresh OK: 1018 unique equities, as_of Aug 27 2026. Remaining priorities identified: observe/validate weekly IBKR reset and recovery/Telegram alerts; final Monday PAPER readiness/acceptance check; review/commit/push intended code changes and ignore backups; defer controller migration decision pending IBC final/successor evaluation; later live-trading migration only after sustained PAPER validation.
+
+[2026-08-29] USER: Invia screenshot Telegram con alert alle 16:31 Dubai / 12:31 UTC: market_data_refresh_failure, attempts=3, exit_code=1, failure_count=0, expected_session=20260828.
+[2026-08-29] ACTION/RESULT: Diagnosi server: alert reale registrato in Alerts/20260829T123113Z_market_data_refresh_failure.json. Controller ha tentato refresh alle 12:30:51, 12:31:02, 12:31:12 UTC e poi ha emesso failure. Daily state e' FAILED per 2026-08-29. Tuttavia il refresh status file corrente e' OK da un precedente refresh manuale delle 07:06 UTC: expected session 20260828, 1017/1017 operational symbols current, failure_count=0, trading_may_proceed=true. Gateway e API 4002 sono attualmente active/listening. La causa dell'exit_code=1 del tentativo controller non e' ancora identificata dal log principale; failure_count=0 suggerisce che il processo e' fallito prima/durante connessione/preflight, non per simboli mancanti. Il controller ha correttamente applicato fail-closed, ma il daily-state FAILED puo' restare incoerente con lo status OK precedente e va corretto/diagnosticato prima di lunedi'.
+
+[2026-08-29] USER: Chiede cosa fare ora dopo l'alert market_data_refresh_failure.
+[2026-08-29] ACTION/RESULT: Analisi codice: il refresh automatico del weekend poteva essere rilanciato perche' il file daily-state era FAILED/stale anche quando il piu' recente status validato ibkr_market_data_refresh.json era OK. Questo ha causato un tentativo inutile sabato alle 08:30 ET durante una finestra in cui IBKR/API poteva non essere disponibile. Inoltre _run_market_data_refresh_once non catturava stdout/stderr del subprocess, rendendo poco diagnostico exit_code=1.
+[2026-08-29] FIX: operational_controller.py modificato in due punti: (1) nel weekend, se il piu' recente refresh validato e' status OK, _market_data_refresh_due() ritorna False anche se un daily-state precedente e' FAILED; (2) il subprocess del refresher ora usa capture_output e, in caso di exit != 0, registra exit_code + tail stdout/stderr nel bot log per diagnosi precisa. Validazione py_compile OK.
+[2026-08-29] TEST/RECOVERY: test esplicito per sabato 2026-08-29 ha restituito weekend_due=False. Eseguito poi run_daily_market_data_refresh(... attempts=1) con API corrente: successo True. ibkr_market_data_daily_state.json riconciliato a status OK, expected_latest_completed_session=20260828, failure_count=0. Controller riavviato con il nuovo codice; controller active, IB Gateway active, API 4002 LISTENING. Nessun ordine trasmesso.
+
+[2026-08-29] USER: Conferma che il reset settimanale IBKR richiedera' sicuramente la riconnessione/autenticazione; considera questo comportamento certo e non utile da attendere come esperimento.
+[2026-08-29] DECISION: Non basare il piano operativo sull'ipotesi di auto-reconnect settimanale. Trattare la nuova autenticazione settimanale come requisito progettuale. Priorita': rilevare immediatamente la perdita di autenticazione/API, inviare alert Telegram chiaro, mantenere trading fail-closed, e definire un percorso di re-login semplice e affidabile; valutare IBC final/successore per ridurre l'intervento manuale senza compromettere la stabilita' di lunedi'.
+
+[2026-08-30] USER: Invia screenshot Telegram alle 07:50-07:51 Dubai e chiede verifica completa. /health mostra Gateway RUNNING, API socket CONNECTED, Live API CONNECTED, Market CLOSED, Liquid hours OUT, Runtime RUNNING, heartbeat 20s, reconciliation RECONCILED, Trading enabled False per Market Closed/Outside Liquid Hours. /status mostra Engine IDLE, Last scan 2026-08-28T13:28:36Z, Selected 5, Orders planned 5, Investable capital $1,005,341.39, AUTO.
+[2026-08-30] ACTION/RESULT: Verifica server live: controller, health-supervisor, ibgateway, telegram tutti active; porta API 4002 LISTENING. Market-data refresh status OK, expected session 20260828, 1017/1017 operational symbols current, failures 0, trading_may_proceed true. Daily state OK. IWB universe refresh OK, 1018 equities, as_of Aug 27 2026. runtime_health timestamp 2026-08-30T03:52:21Z, engine IDLE, reconciliation RECONCILED, execute_orders true, PAPER required, next strategy cycle 2026-08-31T13:28:00Z. Nota importante: runtime_health interno dice TRADING_ENABLED/execute_orders=true mentre /health mostra Trading enabled False per mercato chiuso; non e' necessariamente contraddizione: execute_orders/config abilitata ma gate operativo mercato/liquid-hours chiuso. Nessun alert ibkr_disconnected nuovo trovato per Aug30. Gateway e API risultano quindi sopravvissuti/connessi al momento della verifica. Restano da verificare prima di lunedi': open orders/positions/account PAPER/buying power e final acceptance; chiarire eventuale comportamento del weekly auth/reset se non ancora avvenuto o se la sessione e' rimasta valida.
+
+[2026-08-30] USER: Autorizza la verifica read-only finale IBKR proposta.
+[2026-08-30] ACTION/RESULT: Connessione read-only diretta a IBKR API 127.0.0.1:4002 con clientId diagnostico 1022 riuscita. Managed account: DUQ817826 (PAPER). AccountType INDIVIDUAL. NetLiquidation USD 1,005,341.39; TotalCashValue USD 1,003,041.00; AvailableFunds USD 1,003,041.00; BuyingPower USD 4,012,163.99. Nessuna posizione. Nessun open order restituito. Nessun ordine trasmesso/modificato/cancellato. Questo conferma Gateway/API autenticati e stato broker pulito al momento del test. Nota: investable capital mostrato da /status ($1,005,341.39) corrisponde a NLV, mentre spendable cash/AvailableFunds e' $1,003,041.00; il motore deve quindi applicare il gia' previsto operational buy budget=min(investable,cash,available funds,buying power) per evitare overspend lunedi'.
+
+[2026-08-30] USER: Chiede chiarimento sulla differenza tra investable capital e capitale disponibile e perche' non coincidono.
+[2026-08-30] EXPLANATION: Nel bot, investable capital e' il limite strategico teorico (attualmente 100% del Net Liquidation: $1,005,341.39). Il capitale effettivamente spendibile deve invece rispettare i valori broker, in particolare cash/AvailableFunds ($1,003,041.00 al controllo). Differenza attuale: $2,300.39. BuyingPower ($4,012,163.99) e' superiore perche' IBKR calcola capacita' di acquisto/margine, ma la policy del bot non deve usarlo per fare leva. Per sicurezza il budget operativo BUY usa il minimo tra investable capital, cash, AvailableFunds e BuyingPower, quindi attualmente circa $1,003,041.00. La causa contabile esatta dei $2,300.39 non e' stata ancora scomposta; puo' dipendere da componenti NLV non immediatamente spendibili/accrual/settlement, e va distinta dalla logica del bot.
+
+[2026-08-30] USER: Ritiene pericolosa la distinzione corrente. Richiede una definizione conservativa e stabile del capitale utilizzabile: capire composizione dei $2,300.39, stimarne il massimo possibile, aggiungere safety margin, sottrarre tale riserva dal NLV; inoltre ritiene improprio chiamare NLV 'Investable capital'.
+[2026-08-30] ACTION/RESULT: Query IBKR read-only dettagliata: NLV 1,005,341.39; TotalCashValue/AvailableFunds/FullAvailableFunds/EquityWithLoanValue/ExcessLiquidity/LookAheadAvailableFunds tutti 1,003,041.00; Init/FullInit/Maint/FullMaint margin req tutti 0; GrossPositionValue 0; AccruedCash account USD 2,300.39. All-currency AccruedCash: EUR 2.48, USD 2,297.52, BASE 2,300.3927162. Quindi la differenza NLV-cash di $2,300.39 e' identificata esattamente come AccruedCash, non come margine o posizione. IBKR documenta AvailableFunds=EquityWithLoanValue-InitialMargin e TotalCashValue come cash riconosciuto al trade; NLV e' valore complessivo. Decisione proposta: separare nomi e concetti: NLV/Account Equity; Broker Available Funds; Strategy Capital Limit; Operational Buy Budget. Non usare un importo fisso derivato dai $2,300.39 come unico buffer, perche' AccruedCash e altre componenti/margin requirements possono variare e non hanno un massimo universale fisso. Conservativo: budget operativo dinamico basato su min(TotalCashValue, AvailableFunds, LookAheadAvailableFunds, EquityWithLoanValue) meno un safety buffer esplicito; no BuyingPower/margin leverage. Dimensione del safety buffer da definire con regola percentuale+floor dopo analisi della variabilita'.
+
+[2026-08-30] USER: Approva di procedere con la nuova definizione conservativa del capitale disponibile e safety margin percentuale.
+[2026-08-30] RESEARCH/DESIGN: Verificata documentazione IBKR: Current Available Funds indica quanto e' disponibile per trading ed e' EquityWithLoanValue - Initial Margin per securities; Look Ahead Available Funds riflette i fondi disponibili al prossimo cambio di margine. Buying Power include equity + margine IBKR e non e' adatto alla policy no-leverage. NLV resta misura patrimoniale, non budget operativo.
+[2026-08-30] CHANGE: live_account.py ora acquisisce anche FullAvailableFunds, LookAheadAvailableFunds, EquityWithLoanValue e AccruedCash. trading_engine.py calcola broker_available_capital come minimo di cash, AvailableFunds, FullAvailableFunds, LookAheadAvailableFunds ed EquityWithLoanValue, escludendo BuyingPower dalla base spendibile. Applicato safety margin iniziale conservativo 1.0%; operational_buy_budget=min(effective strategy cap, broker_available_capital)*0.99. Telemetria aggiunta: account_equity_nlv, broker_available_capital, capital_safety_margin_pct/value, operational_buy_budget. Nomi legacy investable_capital_control restano per compatibilita' interna per ora, ma NLV non deve essere presentato concettualmente come capitale disponibile.
+[2026-08-30] VALIDATION: 32/32 test mirati passati (trading_engine, automated_order_workflow, strategy_configuration, strategy_core). Verifica live read-only: NLV 1,005,341.39; cash/AvailableFunds/FullAvailableFunds/LookAheadAvailableFunds/EquityWithLoanValue tutti 1,003,041.00; AccruedCash 2,300.39; BuyingPower 4,012,163.99. Broker available capital 1,003,041.00; safety margin 1%=10,030.41; operational buy budget=993,010.59. Nessun ordine inviato.
+
+[2026-08-30] USER: Approva semplificazione finale del capitale: IBKR AvailableFunds come fonte autorevole, LookAheadAvailableFunds come cap prospettico, safety margin percentuale, NLV solo informativo; chiede pulizia delle modifiche precedenti e verifica bulletproof.
+[2026-08-30] IMPLEMENTATION: Ripulita la formula precedente basata sul minimo di Cash/AvailableFunds/FullAvailableFunds/LookAhead/EquityWithLoan. live_account ora mantiene AvailableFunds e LookAheadAvailableFunds come grandezze operative; AccruedCash resta diagnostico, BuyingPower informativo. Aggiunta config CAPITAL_SAFETY_MARGIN_PCT, default 0.01 (1%, override env TRADINGBOTR1000_CAPITAL_SAFETY_MARGIN_PCT). Aggiunta funzione centralizzata calculate_operational_buy_budget(): broker_available=min(AvailableFunds, LookAheadAvailableFunds se presente); strategy cap puo' solo ridurre il limite; NLV e BuyingPower non possono aumentare il budget; safety margin applicato alla base capped; valori invalidi fail-closed. BuyingPower rimosso dai valori obbligatori del live snapshot perche' non e' usato per il sizing no-leverage.
+[2026-08-30] TERMINOLOGY/UI: Telegram /status e /portfolio non mostrano piu' 'Investable capital' come sinonimo di NLV. Ora mostrano Account equity (NLV), IBKR available funds, Look-ahead available, Safety margin e Operational buy budget; BuyingPower e' marcato informational.
+[2026-08-30] TESTS: Aggiunto tests/test_operational_capital_budget.py con 6 regression tests: AvailableFunds+1%, LookAhead lower cap, strategy cap only reduces, NLV/BuyingPower cannot increase budget, invalid AvailableFunds fail-closed, invalid safety margin fail-closed. Suite mirata (capital budget + trading engine + automated order workflow + Telegram monitoring/alerts): 30/30 PASS. Full unittest discovery: 64 tests attempted, 4 pre-existing/unrelated errors dovuti a moduli backtest assenti sul server (corrected backtest runner mancante e tre test short che importano backtests non presenti); nessun errore della nuova logica capitale.
+[2026-08-30] LIVE READ-ONLY VERIFICATION: IBKR PAPER live values: NLV 1,005,341.39; AvailableFunds 1,003,041.00; LookAheadAvailableFunds 1,003,041.00; AccruedCash 2,300.39; BuyingPower 4,012,163.99. Broker available capital 1,003,041.00; safety 1%=10,030.41; Operational Buy Budget=993,010.59. Account PAPER, API connected, positions=0, open_orders=0.
+[2026-08-30] DRY-RUN ACCEPTANCE: Eseguito trading_engine --scan-once con automated execution esplicitamente disabilitata via env. Risultato 5 candidates/5 intended orders, broker_orders_transmitted=0 e proof_no_broker_order_transmitted=true. Quantita'/notional: AIT 635 @312.55 =198,469.25; CASY 271 @732.81=198,591.51; MMM 1174 @169.11=198,535.14; PYPL 3815 @52.05=198,570.75; WST 606 @327.35=198,374.10. Totale stimato 992,540.75, sotto Operational Buy Budget 993,010.59 di 469.84 e sotto AvailableFunds di 10,500.25. I 5 record locali NotTransmitted creati dal dry-run cycle 2026-08-30T04:51:32Z sono stati rimossi da state/automated_orders.json dopo backup, per evitare qualsiasi falsa duplicate prevention lunedi'. Nessun ordine broker esiste.
+[2026-08-30] DEPLOYMENT/FINAL STATE: tradingbot-controller e tradingbot-telegram riavviati con nuovo codice; Gateway resta active e porta 4002 LISTENING. Render Telegram verificato direttamente e mostra NLV 1,005,341.39; Available Funds 1,003,041.00; Safety 1.00%; Operational Buy Budget 993,010.59. Broker final check: connected, PAPER DUQ817826, 0 positions, 0 open orders.
+
+[2026-08-31] USER: Dopo l'alert Telegram ibkr_disconnected delle 03:45 e ibkr_reconnected delle 07:08, comunica di essersi gia' riconnesso con bVNC e chiede verifica completa che sia tutto OK. Durante la verifica chiede conferma che l'assistente sia ancora presente; poi autorizza a proseguire.
+[2026-08-31] VERIFICA IN CORSO: Servizi tradingbot-controller, tradingbot-health-supervisor, tradingbot-ibgateway e tradingbot-telegram risultano active. Porta API 4002 in LISTEN. Verifica broker read-only con clientId diagnostico 1022: account PAPER DUQ817826, NLV $1,005,351.47, cash/AvailableFunds/LookAheadAvailableFunds $1,003,051.07, BuyingPower $4,012,204.29, 0 posizioni, 0 open orders, operational buy budget con safety margin 1% = $993,020.56. Nessun ordine inviato/modificato/cancellato. Rilevata una limitazione diagnostica: collect_system_health eseguito via SentinelX (utente sentinelx) segnala runtime STOPPED/BOT NOT RUNNING perche' process_info usa os.kill(pid,0) su un processo di ibkradmin e riceve PermissionError; il processo controller PID 216513 e' invece realmente attivo e heartbeat/controller state sono aggiornati. Il /health Telegram, eseguito dal servizio come ibkradmin, non soffre di questo problema. Da valutare/fissare separatamente la falsa lettura cross-user senza interferire con il trading.
+[2026-08-31] CORREZIONE DIAGNOSTICA: runtime_processes.is_pid_running ora tratta POSIX PermissionError/EPERM da os.kill(pid,0) come prova che il processo esiste, evitando falso Runtime STOPPED nelle verifiche cross-user SentinelX. Aggiunti regression test per PermissionError=>running e ProcessLookupError=>not running. Nessun impatto sulla logica ordini o sulla sessione IBKR.
+[2026-08-31] NOTE DATA: oggi e' lunedi' a Dubai; il controllo finale e' quindi per la sessione USA di oggi 31 agosto 2026.
+[2026-08-31] Controllo finale lunedi' in corso dopo fix diagnostico.
+[2026-08-31] CONTROLLO FINALE LUNEDI': fix diagnostico verificato, /health cross-user ora mostra Runtime RUNNING correttamente. 32/32 test mirati passati. Corretto anche il test runtime_restart_hardening affinche' usi file temporanei e non modifichi piu' lo stato operativo reale; durante il test era stato accidentalmente scritto desired_running=false, poi ripristinato con autorizzazione esplicita a desired_running=true/authorized=true e verificato che i test non lo alterino piu'. Pulita una evidenza locale stale FITB del 2026-08-28 rimasta PendingSubmit ma non presente presso broker: marcata Unconfirmed con motivazione stale_pending_submit_not_present_at_broker_after_20260828_DAY_session; backup creato. Ora local open_automated_orders=0 e broker open_orders=0. Stato finale read-only: Gateway RUNNING, API socket CONNECTED, Live API CONNECTED, runtime RUNNING, engine IDLE, reconciliation RECONCILED, account PAPER, 0 posizioni, 0 broker open orders. NLV circa $1,005,351; Available/LookAhead circa $1,003,050.61; safety margin 1%; operational buy budget circa $993,020.10. Tutti i servizi controller/health/ibgateway/telegram active; stop flags assenti; desired_running=true; boot authorization=true. Market CLOSED/OUT al momento perche' a New York e' ancora domenica sera; next strategy cycle 2026-08-31T13:28:00Z (09:28 ET / 17:28 Dubai). Market-data refresh automatico schedulato 08:30 ET e stato validato corrente fino alla sessione 20260828; universe IWB status OK. Nessun ordine inviato/modificato/cancellato durante il controllo finale.
+
+[2026-08-31] INCIDENT/CORRECTION: Lo scan live delle 13:30Z aveva prodotto selected=0 non per assenza di segnali ma per PermissionError su tutti i daily bar files. Audit: 1017 files erano sentinelx:sentinelx mode 600, quindi il processo operativo ibkradmin non poteva leggerli; 9 files erano ibkradmin:ibkradmin mode 664. Correzione: portati i 1017 files a mode 644; patch ibkr_daily_bar_refresh.py per applicare chmod 0644 dopo ogni atomic replace; patch iwb_universe_refresh.py per applicare chmod 0644 dopo il refresh universale; patch trading_engine.py per sollevare EngineInputError su qualsiasi market_data_read_error anziche completare silenziosamente con zero candidati; patch activation_preflight.py per trattare market_data_read_error come critical exclusion. Verifica: 1017/1017 daily bars caricabili, 0 esclusioni, 1007 simboli effettivamente valutati, 5 candidati reali AIT/CASY/MMM/PYPL/WST; unit test mirati 13/13 OK; activation preflight nel contesto execute_orders=true: OK, account PAPER, Gateway/API connected, market OPEN, liquid hours IN, 0 posizioni, 0 open orders, reconciliation RECONCILED. Nessun ordine trasmesso durante la correzione/verifica.
+
+[2026-08-31] FULL-CYCLE SIMULATION AFTER PERMISSION FIX: Restored read access to all daily-bars files (0 files remain without world-read permission). Patched ibkr_daily_bar_refresh.py and iwb_universe_refresh.py so future atomic replacements chmod outputs 0644. Patched trading_engine.py to fail closed on any market_data_read_error:* instead of silently converting systemic read failures into zero candidates. Patched activation_preflight.py to treat market_data_read_error:* as critical. Production-context preflight with automated PAPER execution enabled returned ok=true: PAPER account, Gateway/API connected, market OPEN, liquid hours IN, 1017/1017 symbols loaded, 0 critical exclusions, reconciliation RECONCILED. Official full dry-run scan executed with order transmission explicitly disabled: loaded 1017, evaluated 1007, selected 5 (AIT, CASY, MMM, PYPL, WST), planned 5, broker_orders_transmitted=0. Read-only order-construction/qualification simulation qualified all 5 IBKR contracts and built LMT BUY orders: AIT 635@312.55, CASY 271@732.81, MMM 1174@169.11, PYPL 3815@52.05, WST 606@327.35; total notional 92,540.75 vs operational budget about 93,034. Broker verification after simulation: PAPER, 0 positions, 0 open orders. Telegram /status now reflects Selected 5 / Orders planned 5; /health RUNNING, Live API CONNECTED, Liquid hours IN, Trading enabled True. Production systemd service still has TRADINGBOTR1000_ENABLE_AUTOMATED_PAPER_EXECUTION=1; dry-run override applied only to the simulation process. Strategy RSI exit 50 vs remembered 60 remains a separately recorded UNVERIFIED strategy-spec question and was not changed during operational repair.
+
+[2026-08-31] SENTINELX POLICY CORRECTION: User requested immediate removal of the SentinelX file-operations anomaly. Inspection found malformed file_ops YAML: TradingbotR1000 path lacked access: rw while trading-research had duplicated access: rw. Operator created /etc/sentinelx/config.yaml.bak-20260831, added access: rw to /home/ibkradmin/trading/TradingbotR1000, removed duplicate access line, and restarted sentinelx-cloud-core. Post-restart capabilities report writable_paths=2. This append itself is the positive structured-write verification for Master History.
+[2026-08-31] STRATEGY DECISION CONFIRMED: User states RSI exit threshold is definitively 60, not 50. Active production strategy.py and strategy_constants.json were changed to 60; reason identifier changed to rsi_cross_above_60; affected tests updated; full active-project search excluding historical outputs/backups/history returned zero RSI+50 references; targeted active suite 32/32 passed. Historical reports/state/backups are intentionally not rewritten.
+[2026-08-31] BOT CORRECTION / FINAL CONSOLIDATION: SentinelX RW policy restored for TradingbotR1000 and verified. Production RSI exit threshold confirmed at 60.0 in active runtime; active source/config/tests contain no RSI+50 references. Daily-bar and IWB permission hardening remains in place; scan now fails closed on market_data_read_error instead of silently returning zero candidates. Targeted regression suite 36/36 passed. Controller, health supervisor and Telegram services restarted to reload current code; IB Gateway left untouched. Post-restart activation preflight under automated PAPER execution environment returned ok=true, issues=[], account PAPER, Gateway/API connected, market OPEN, liquid hours IN, reconciliation RECONCILED, 1017/1017 market-data files loaded with 0 critical exclusions, 0 broker positions and 0 broker open orders. Telegram /status now reports last validated simulation Selected=5 and Orders planned=5; /health reports Trading enabled=True. No broker orders were transmitted during this consolidation.
+
+[2026-08-31] PAPER END-TO-END ACCEPTANCE TEST - 5 CANDIDATES: User authorized a real PAPER broker-path test using all 5 validated strategy candidates, with minimum exposure of 1 share each. Used the same strategy candidates and same limit prices from the validated scan, but reduced allocation values so sizing generated exactly 1 share per symbol. Precondition asserted PAPER account, 0 positions, 0 open orders, market-data compliance OK, buy_submission_blocked false. Orders transmitted through production automated_broker.process_order_plan with automated PAPER execution enabled. Results: AIT BUY 1 @ 312.55 Submitted orderId=18 permId=464151329; CASY BUY 1 @ 732.81 Submitted orderId=20 permId=464151330; MMM BUY 1 @ 169.11 Submitted orderId=22 permId=464151331; PYPL BUY 1 @ 52.05 Submitted orderId=24 permId=464151332; WST BUY 1 @ 327.35 Submitted orderId=26 permId=464151333. broker_orders_transmitted=5, rejected=[], duplicate_preventions=[]. Immediate broker readback: 0 positions and 5 open BUY limit orders, all status Submitted with remaining=1. Reconciliation immediately after submission returned RECONCILED with broker_position_count=0 and broker_open_order_count=5. This proves the full automated production path reaches ib.placeOrder(), receives positive IBKR acknowledgement, persists broker IDs/status, and reconciles correctly. Orders are DAY limit orders and may remain open until filled or expire at session end if not filled. No LIVE account involved.
+
+[2026-08-31] SOURCE-VIDEO VERIFICATION OF 97% ENTRY: User questioned whether BUY LIMIT at 97% of signal-day close is truly required by the source video. The original transcript is present on the server at docs/Transcribed by TurboScribe.docx. Direct extraction of the transcript confirms the presenter says that after the stock closes below the lower Bollinger Band, one should place a "3% buy limit order" based on the previous day's closing price. In the worked example, close $27.71 is explicitly multiplied by 0.97 to obtain $26.87, and the trade fills only if the next day's price falls to that limit. Therefore buy_limit_multiplier=0.97 is source-faithful, not an implementation invention. Separate discrepancy noted: the same source transcript states RSI(2) exit crossing above 50, whereas the active bot uses 60 by explicit later user decision; RSI60 is therefore a deliberate strategy modification, not the video's original rule.
+
+[2026-08-31] END-OF-DAY PAPER ACCEPTANCE CLEANUP
+User requested cancellation of the five 1-share PAPER acceptance-test orders and restoration of normal bot operation so no test residues carry into the next session.
+Actions/results:
+- Initial cancellation attempt from IBKR clientId 1002 could see the five orders but IBKR returned Error 10147 because the orders belonged to clientId 1000; no cancellation was falsely assumed.
+- Reconnected with production clientId 1000 and explicitly cancelled the five acceptance orders by known permId: AIT 464151329, CASY 464151330, MMM 464151331, PYPL 464151332, WST 464151333.
+- Post-cancel production-client readback: zero open trades and zero positions.
+- Independent read-only broker verification: BROKER_OPEN_ORDERS=[] and BROKER_POSITIONS=[].
+- Reconciliation after cleanup: RECONCILED, broker_position_count=0, broker_open_order_count=0.
+- Controller remains active and its actual systemd environment contains TRADINGBOTR1000_ENABLE_AUTOMATED_PAPER_EXECUTION=1.
+- Runtime health: strategy_engine_state=IDLE, order_engine_state=OK, trading_state=TRADING_ENABLED, execute_orders=true, last cycle COMPLETED, next strategy cycle 2026-09-01T13:28:00Z.
+- No IB Gateway restart was performed.
+Note: a manual activation_preflight invocation outside the controller environment reported automated_execution_switch_not_enabled because the systemd drop-in environment was not inherited by that shell. This is not the controller runtime state; systemctl show and runtime_health.json confirm automated PAPER execution is enabled in the running controller.
+
+[2026-09-02] ENGINE FAILURE / TELEGRAM SPAM INCIDENT AND HARDENING
+Observed repeated Telegram `engine_failure` alerts every ~20-30 seconds. Root cause was not Telegram: IB Gateway Java process was running but API socket 127.0.0.1:4002 was not listening. Direct strategy-engine reproduction produced ConnectionRefusedError [Errno 111] and exit code 1. Controller retried four times, returned nonzero, systemd restarted it, and the same cycle repeated indefinitely, creating >500 historical engine_failure alert files.
+Corrections applied:
+1) trading_engine.py now treats OSError (including ConnectionRefusedError) as a controlled engine failure (exit code 2) rather than an unhandled traceback/exit 1.
+2) operational_controller.py no longer exits after the fourth failed engine attempt. It enters RETRY_COOLDOWN for 300 seconds, remains alive, resets the bounded retry counter, and automatically retries later. This prevents systemd restart loops while still allowing recovery from transient IBKR/API outages.
+3) telegram_alerts.py now applies a persistent 6-hour throttle to repeated engine_failure notifications based on existing engine_failure alert files. IBKR disconnect/reconnect transition alerts from health_supervisor remain independent.
+4) IB Gateway service was restarted because the API port was already unavailable. The Java process is running, but post-restart port 4002 is still not listening, consistent with Gateway not being authenticated/ready; manual GUI login may be required.
+Validation: controller status after patch = RETRY_COOLDOWN, last_exit_code=2, service remains active; anti-spam self-test did not create a new alert (BEFORE=508 AFTER=508); targeted tests 22/22 passed. No trading orders were altered by this incident-response change.
+
+[2026-09-01] NORMAL PAPER CYCLE / BROKER SUBMISSION VERIFIED
+Normal automated strategy cycle completed with 5 selected candidates and 5 planned BUY orders; broker submitted all 5 and rejected/skipped 0. Orders verified at IBKR as real PAPER Submitted orders with valid permIds: ARWR 2485 @79.92, MGM 4950 @40.12, WAB 716 @277.35, HWM 835 @237.60, SON 3712 @53.50. At verification time there were 0 fills/0 positions. Reconciliation matched 5 planned vs 5 broker open orders. This was the first verified unattended normal-cycle path scan->sizing->submission->IBKR acknowledgement->reconciliation after the prior repairs.
+
+[2026-09-02] INCIDENT / TELEGRAM SPAM / IBKR API LOSS
+Repeated Telegram engine_failure alerts were traced to the strategy engine repeatedly receiving ConnectionRefusedError on 127.0.0.1:4002 while the IB Gateway Java process itself remained running. Controller retry behavior plus systemd restart created an alert storm. Hardening applied: controlled handling of OSError/ConnectionRefusedError, controller RETRY_COOLDOWN without process exit, and persistent 6-hour dedup/throttle for repeated engine_failure alerts. Targeted validation passed and the alert storm stopped. IBKR disconnect/reconnect transition alerts remain separate.
+
+[2026-09-02] SECURITY AUDIT / CYRILLIC FEED ANOMALY
+User reported an unexpected Cyrillic word ("возможностей") in the ChatGPT progress feed and requested compromise investigation. Read-only server audit found no occurrence of that exact word in TradingBot source/config/systemd/SentinelX; incidental Cyrillic data exists only inside third-party Python Unicode/test datasets. SSH today showed no successful login before the user's own 16:03 UTC public-key session; password authentication is disabled and root SSH login is disabled. Internet pre-auth scanning was present but no successful unauthorized SSH session was found. x11vnc is configured -localhost and listens only on loopback, so VNC is not directly Internet-exposed; access requires an SSH tunnel. x11vnc currently uses -nopw, which remains a hardening item even though loopback binding materially limits exposure. No evidence linked the ChatGPT Cyrillic feed artifact to the server.
+
+[2026-09-02] ROOT CAUSE CONFIRMED: UBUNTU UNATTENDED UPGRADE INTERRUPTED IB GATEWAY
+Timeline reconstruction established the primary cause of today's API outage. At 06:03:55 UTC health reported IBKR/API/socket CONNECTED. apt-daily-upgrade began at 06:04:16 UTC. During unattended package upgrades systemd was reexecuted, and at 06:04:59 UTC the system explicitly stopped TradingBot controller, health, Telegram, VNC/Fluxbox and tradingbot-ibgateway.service. Gateway stopped at 06:05:00 and was restarted at 06:05:07, but the new Gateway did not restore an authenticated API session; port 4002 remained unavailable until manual IBKR authentication later in the day. The server itself did not reboot.
+Important prior-history correlation: this update/restart risk had already been identified on 2026-08-29. needrestart had then deferred a Gateway restart and /etc/needrestart/conf.d/tradingbot-ibgateway.conf was created with an override intended to prevent automatic restart. Today's incident proves that protection was incomplete: the broader unattended-upgrade/systemd/X11 service restart chain still stopped Gateway indirectly. The issue is therefore REOPENED, not newly discovered.
+Competing-session check: no COMPETE/competing-session event exists in the Sep 2 Gateway log around the outage. A real historical competing-session event on Aug 31 contains explicit "COMPETE: session kicked out" and "Disconnect all farms due to competing session", confirming the expected signature. Today's outage does not match it.
+After user reauthenticated Gateway, 4002 returned to LISTEN, controller recovered automatically, reconciliation returned RECONCILED, order engine OK, trading state TRADING_ENABLED, and next strategy cycle was scheduled normally.
+
+[2026-09-02] CHANGE-CONTROL GAP IDENTIFIED
+User correctly noted that Master History and GitHub had not been kept continuously synchronized despite prior requirement. Repository root verified as /home/ibkradmin/trading/TradingbotR1000 with origin git@github.com:ainergiconsulting/TradingbotR1000.git. History is intentionally excluded from GitHub by .gitignore and remains the durable local operational narrative; code/config/tests must be committed and pushed separately. Current task: reconcile History, commit/push accumulated validated project changes, then implement a definitive prevention for unattended Ubuntu upgrades interrupting the trading stack.
+
+[2026-09-02] ROOT-CAUSE DETAIL: WHY THE PREVIOUS NEEDRESTART FIX FAILED
+Inspection of /var/log/unattended-upgrades/unattended-upgrades-dpkg.log proved that the pre-existing /etc/needrestart/conf.d/tradingbot-ibgateway.conf rule DID work for the direct Gateway unit: needrestart explicitly logged "Service restarts being deferred: ... tradingbot-ibgateway.service". The actual failure path was indirect. needrestart automatically restarted tradingbot-xvfb.service together with several other outdated services. tradingbot-ibgateway.service declares Requires=tradingbot-xvfb.service; therefore stopping/restarting Xvfb propagated a stop to IB Gateway even though Gateway itself was on the defer list. This explains why the protection previously appeared correct yet failed on Sep 2. The prior fix protected one service but not its dependency chain.
+
+[2026-09-02] DEFINITIVE UBUNTU MIDWEEK-UPGRADE PREVENTION
+Applied two independent guards designed for a trading server:
+1) Automatic package installation disabled: /etc/apt/apt.conf.d/20auto-upgrades now keeps Update-Package-Lists=1 but sets Unattended-Upgrade=0. Package metadata may refresh, but packages are not installed unattended.
+2) apt-daily-upgrade.timer disabled and MASKED, preventing the vendor upgrade timer from being started automatically or re-enabled by a normal preset. It is currently masked/inactive. apt-daily.timer remains enabled for harmless package-list/update activity.
+3) /etc/needrestart/conf.d/tradingbot-no-auto-restart.conf forces needrestart restart mode to list-only ($nrconf{restart}='l'). Thus even an apt/dpkg maintenance run reports required restarts instead of automatically restarting daemons. Explicit weekend maintenance can intentionally override with NEEDRESTART_MODE=a.
+4) Versioned deployment copies and rationale stored in deploy/apt, deploy/needrestart and deploy/UBUNTU_MAINTENANCE_POLICY.md for GitHub/reproducibility.
+Validation: effective APT config reports Unattended-Upgrade=0; apt-daily-upgrade.timer=masked/inactive; needrestart list-mode dry scan reports tradingbot-ibgateway.service as needing restart but does not restart it; all TradingBot services remained active throughout the policy change and IBKR API port 4002 remained LISTENING. No Gateway restart and no loss of authenticated session occurred during this fix.
+Policy: OS package installation/restarts are now explicit planned weekend maintenance only. This prioritizes uninterrupted trading-week operation while retaining package metadata refresh and visibility of pending updates.
+
+[2026-09-02] GITHUB RECONCILIATION COMPLETED
+Accumulated validated TradingBot code/config/test changes were committed and pushed to origin/main as 751dbfa05ed5cf3bb1d01be933c20afa34eb6fd3 ("Harden paper trading workflow and runtime recovery"). The Ubuntu maintenance-policy deployment files were then committed and pushed as a6664082315de22ea79baec4fe954f5d07368bb9 ("Prevent unattended Ubuntu restarts during trading week"). For both pushes, local HEAD was compared against refs/heads/main via git ls-remote and matched exactly. Working tree was clean after the second push.
+
+[2026-09-02] USER DECISION: WEEKLY CONTROLLED MAINTENANCE WINDOW
+User prefers a deliberate weekly restart aligned with the IBKR/Gateway weekend reset instead of allowing Ubuntu to install/restart services unpredictably during the trading week. Decision: concentrate Ubuntu package maintenance and the server/Gateway restart in a planned Saturday/Sunday window, with manual IBKR authentication if required and post-restart fail-closed behavior until API/reconciliation recover.
+
+[2026-09-02] IMPLEMENTATION: WEEKLY MAINTENANCE TIMER
+Implemented a dedicated systemd weekly maintenance workflow. tradingbot-weekly-maintenance.timer is enabled and schedules Sunday 02:00 UTC (06:00 Dubai), first trigger 2026-09-06. The oneshot script /usr/local/sbin/tradingbot-weekly-maintenance is versioned from deploy/maintenance/weekly_maintenance.sh. Safety guard refuses a real run outside Sunday UTC; flock prevents concurrent runs. During a real run it stops the operational controller, runs apt-get update + upgrade + autoremove with DEBIAN_FRONTEND=noninteractive and NEEDRESTART_MODE=l, records maintenance progress to Master History, then deliberately reboots the server. After reboot the normal enabled TradingBot services restart; IB Gateway may require human authentication, and trading remains fail-closed while API/reconciliation are unavailable. Weekday unattended package installation remains disabled and apt-daily-upgrade.timer remains masked.
+VALIDATION: executed maintenance script in explicit DRY_RUN mode only; no packages were changed and no reboot occurred. Timer active/waiting for Sun 2026-09-06 02:00 UTC. IB Gateway, controller, health supervisor and Telegram all remained active; API 4002 remained LISTENING.
+
+[2026-09-02] WEEKLY MAINTENANCE SCHEDULE REFINED AFTER IBKR DOCUMENTATION CHECK
+User chose the simpler deterministic design rather than a disconnect-trigger watchdog. Official IBKR documentation states that authentication tokens are invalidated each Sunday at 01:00 ET and that TWS/IB Gateway require weekly manual re-authentication after the weekend reset. The maintenance timer was therefore changed from the provisional fixed Sun 02:00 UTC schedule to Sun 04:00 America/New_York, deliberately three hours after the documented 01:00 ET reset. Using the America/New_York timezone makes the timer follow US daylight-saving changes automatically and preserves the three-hour margin in both EST and EDT. The weekly maintenance remains: stop controller, controlled Ubuntu update/upgrade/autoremove, deliberate full server reboot, then normal service startup; IB Gateway may require user authentication and trading remains fail-closed until API/reconciliation recover. The maintenance script Sunday safety check was also changed from UTC weekday to America/New_York weekday. No reboot or package upgrade was executed while applying this scheduling correction.
+
+[2026-09-03] HEARTBEAT_STALE INCIDENT DURING NORMAL DAILY IBKR REFRESH
+User reported Telegram heartbeat_stale and explicitly required autonomous diagnosis/correction plus consultation/update of Master History. Master History was consulted before modifying the system. Root cause: the daily IBKR Russell-1000 refresh started normally at 12:30:25 UTC and required about 18 minutes for 1017 symbols. While operational_controller.py was synchronously blocked in subprocess.run(), it stopped writing its controller heartbeat; the independent health supervisor therefore classified the >180-second heartbeat age as STALE even though controller, Gateway and API were healthy. This was a monitoring/liveness false positive, not an IBKR disconnect.
+Live refresh result: completed successfully at 12:48:43 UTC on first attempt; status OK; expected latest completed session 20260902; 1017/1017 symbols updated, rows_added=2034, failures=0, trading_may_proceed=true. This completed ~39 minutes before the scheduled 13:28 UTC strategy cycle.
+FIX: operational_controller._run_market_data_refresh_once now runs a dedicated daemon heartbeat thread while the long market-data subprocess is active, writing event=market_data_refresh / refresh_state=RUNNING every 60 seconds and a completion heartbeat afterward. Market-data validity remains governed separately by the refresh status files, so this does not convert refresh liveness into trading approval.
+REGRESSION: added test_market_data_refresh_keeps_controller_heartbeat_alive. Targeted suite 43/43 PASS. Controller restarted only after the live refresh had completed, leaving IB Gateway untouched. Post-restart verification: controller/health/Gateway/Telegram active, API 4002 LISTENING, heartbeat fresh, health supervisor status OK, IBKR live API CONNECTED, reconciliation/runtime state remains TRADING_ENABLED/RECONCILED, next strategy cycle 2026-09-03T13:28:00Z. No new heartbeat alert appeared after recovery.
+PROCESS NOTE: user correctly challenged the need to say 'proceed' after already authorizing autonomous correction. For active incidents in this project, once the user has requested diagnosis/correction and no new destructive or credential-dependent action is required, the operator should continue through diagnosis, safe fix, validation, Master History update and Git synchronization without waiting for a redundant prompt.
+
+[2026-09-03] TELEGRAM /PORTFOLIO CLARITY: PENDING BROKER ORDERS
+User requested unambiguous visibility of how many emitted IBKR orders remain pending and which securities they concern, so individual titles can be monitored. Before modification, Master History was consulted. Live broker read confirmed the four 2026-09-03 strategy orders were accepted by IBKR but still unfilled: FAST BUY 4272 @ 46.49, IOT BUY 5564 @ 35.69, OMC BUY 2504 @ 79.31, SNOW BUY 669 @ 296.66; all had filled=0 and their full quantity remaining. Therefore Positions=0 was correct, while the prior /portfolio output was incomplete because it did not display open/pending broker orders.
+CHANGE: telegram_commands.render_portfolio now includes a separate Pending orders section sourced from the fresh broker-authoritative open_orders snapshot. It reports total pending order count and, for every order with remaining quantity > 0: symbol, side, original quantity and limit price, filled quantity, pending/remaining quantity, and current IBKR status. This also handles partial fills explicitly. If none remain it reports No pending broker orders. Positions remain a separate section and continue to mean actual broker positions/fills.
+VALIDATION: added focused regression test test_render_portfolio_shows_pending_order_details, including a partial-fill case. Targeted tests 13/13 PASS. A live read-only render at 2026-09-03T15:12:25Z showed Pending orders: 4 and correctly listed SNOW/FAST/OMC/IOT with filled=0 and full quantities pending. Only tradingbot-telegram.service was restarted to load the renderer change; IB Gateway was not restarted and API 4002 remained LISTENING.
+
+[2026-09-04] STRATEGY CAPACITY / CONCENTRATION CONCLUSION
+User concluded that the current concentrated mean-reversion strategy (maximum 5 positions, roughly 20% capital per position when fully allocated, with 97% limit entry) is unlikely to be suitable for deploying large capital because realistic fill capacity becomes problematic as order size grows. This is especially relevant because a daily OHLC backtest can overstate executable size: a low price touching the limit does not prove that sufficient volume was available at that price for a large order, and PAPER trading does not reproduce real queue priority or market impact.
+Operational conclusion: this strategy may still be useful, but should be treated as a limited-capacity sleeve rather than a standalone solution for the user's full capital. If retained, it should be combined with other strategies that diversify entry logic, holding periods, instruments and/or liquidity profiles so total capital can be deployed without forcing excessively large orders into a small number of names. The previously suggested $100k ceiling is not established as a measured hard limit and should not be recorded as fact; actual capacity remains to be estimated conservatively and validated with more granular execution/liquidity analysis.
+
+[2026-09-04] BACKTEST CAPACITY METHODOLOGY — TWO-STAGE APPROACH
+Follow-up decision on the capacity problem of the current concentrated mean-reversion strategy. The backtest should NOT attempt from daily OHLC data alone to claim an exact maximum deployable capital, because Low <= 97% only proves that the limit price was reached; it does not prove that enough shares were available at that price to fill a large order, nor reproduce queue priority or the market impact of a real order.
+
+Agreed methodology: use a two-stage process. Stage 1 is the long-horizon daily backtest, whose purpose is to establish whether the strategy has a sufficiently robust theoretical edge and deserves further investigation. Capacity analysis is deferred until the strategy passes that stage, avoiding unnecessary complexity and data cost.
+
+Stage 2, if justified, is a more granular execution/capacity validation using intraday data. For each theoretical 97% fill, one potentially useful test is to examine the volume actually traded at/around the limit price and during the relevant interval, rather than treating every price touch as a guaranteed full fill. The analysis can then consider order size relative to available/traded volume, partial fills, spread/slippage and plausible market impact. This is recognized as substantially more complex than the primary backtest and therefore should not be imposed on the initial long-horizon study.
+
+The capacity result should preferably be expressed as a capacity curve or range — estimated executability/performance as capital and order size increase (for example across several capital levels) — rather than as a falsely precise single maximum-capital number. If necessary, a later empirical calibration could compare model/PAPER expectations with carefully controlled small real executions, but this is a separate validation phase and not required for the initial backtest.
+
+USER DECISION: proceed with this staged methodology. Specifically remember the possibility of checking traded volumes for each theoretical 97% fill, while treating that check as a second-level validation because of its complexity.
+
+[2026-09-06] WEEKLY_MAINTENANCE: START at 2026-09-06T08:00:16Z. Trading controller will stop; Ubuntu packages will be updated in controlled maintenance; server will reboot afterward. IB Gateway authentication may require user action after reboot.
+
+[2026-09-06] WEEKLY_MAINTENANCE: PACKAGE PHASE COMPLETE. Controlled reboot initiated; post-reboot Gateway/API authentication and reconciliation are required before trading resumes.
+
+[2026-09-06] POST-MAINTENANCE IBKR REAUTHENTICATION CONFIRMED
+After the scheduled Sunday Ubuntu maintenance and reboot, the user completed the required weekly IB Gateway reauthentication via bVNC. Follow-up verification performed immediately afterward to confirm Gateway/API recovery and TradingBot service state. The separate universe_backup permission defect had already been corrected by restoring ownership to ibkradmin:ibkradmin and validating write access as the runtime user.
+
+[2026-09-11] CRITICAL NO-LEVERAGE CAPITAL BUG IDENTIFIED AND FIXED
+User correctly identified that Telegram /portfolio showed Operational buy budget about $804,839 despite actual cash only about $261,358 while four positions were already open. Master History was consulted before correction. Root cause traced to the 2026-08-30 simplification: calculate_operational_buy_budget() had been changed to treat IBKR AvailableFunds/LookAheadAvailableFunds as the spendable base while excluding cash. That appeared safe while the account was nearly all cash because Cash and AvailableFunds were then almost equal, but became wrong once positions existed: IBKR AvailableFunds materially exceeded actual cash because margin capacity was reflected. This violated the project's explicit no-leverage policy and made the displayed/planned BUY budget too high.
+
+FIX: live_account.calculate_operational_buy_budget() now requires valid nonnegative cash and computes broker_available_capital = min(actual cash, AvailableFunds, LookAheadAvailableFunds when present). Any lower strategic capital ceiling can only reduce that base; the configured safety margin is then deducted. NetLiquidation and BuyingPower remain informational/ceiling values and cannot increase BUY capacity. Missing/invalid cash or AvailableFunds fails closed. The broker submission layer already had an independent min(cash, AvailableFunds, BuyingPower) guard, so this change restores the earlier safety invariant at the upstream sizing/budget layer as well, giving defense in depth.
+
+REGRESSION: tests/test_operational_capital_budget.py updated so cash is mandatory. Added a direct regression reproducing the observed failure mode (cash $261,357.73; AvailableFunds/LookAhead $812,968.99; NLV $1,010,073.82; BuyingPower $3,251,875.97) and asserting broker_available_capital=$261,357.73 and Operational Buy Budget=$258,744.1527 after 1% safety. Added invalid-cash fail-closed test. Targeted capital/trading/order/Telegram suite: 32/32 PASS.
+
+LIVE READ-ONLY VALIDATION after deploying/restarting only controller and Telegram (Gateway left untouched): cash=$261,347.52; AvailableFunds=$813,232.84; LookAheadAvailableFunds=$813,232.84; NLV=$1,010,435.22; BuyingPower=$3,252,931.37. Corrected broker_available_capital=$261,347.52; 1% safety=$2,613.48; corrected Operational Buy Budget=$258,734.04. Explicit invariant check OperationalBuyBudget <= cash*0.99 PASS. Gateway/API remained active with port 4002 LISTENING; controller state RECONCILED/TRADING_ENABLED; next strategy cycle 2026-09-11T13:28:00Z.
+
+DOCUMENTATION CONSOLIDATION: updated docs/OPERATING_MANUAL.md, docs/IBKR_OPERATIONS.md, docs/PROJECT_SPECIFICATION.md, docs/CHANGELOG.md and active code documentation in investable_capital_control.py/live_account.py. Removed stale active-document references to the old 70% AUTO/30% reserve model; current AUTO strategic ceiling is 100% NLV, but it is only a ceiling and never authorizes margin. Current no-leverage Operational Buy Budget invariant is min(cash, AvailableFunds, LookAheadAvailableFunds), then lower strategy cap if any, then safety margin. Historical Master History entries are intentionally preserved rather than rewritten; this entry supersedes the 2026-08-30 AvailableFunds-only simplification.
+
+[2026-09-12] IBKR WEEKEND RESET DIAGNOSIS — API TIMEOUT START TIME IDENTIFIED
+Read-only investigation of the Sep 12 API outage found the exact transition: health supervisor reported Live API CONNECTED continuously through 2026-09-12 04:46:10 UTC, then the first simultaneous positions/open-orders/completed-orders/account-updates timeouts appeared at 04:47:15 UTC; from 04:47:20 UTC onward live_api_status remained DISCONNECTED with TimeoutError while Gateway process remained RUNNING and local API socket 4002 remained CONNECTED/LISTENING. The Gateway Java process itself did not restart at that moment.
+
+Important timing correlation: Gateway is connected to cdc1.ibllc.com (US paper-account server). 04:47 UTC on Sep 12 equals 00:47 New York EDT, which falls squarely inside IBKR's published Saturday North America weekend reset/maintenance window of 00:00-02:00 ET. This makes the weekly IBKR reset/authentication invalidation the leading explanation, contrary to the initial impression based on the much later time at which the problem was noticed in Dubai. The outage had actually begun about twelve hours earlier.
+
+Additional evidence: a fresh diagnostic API client on 127.0.0.1:4002 can establish the local API connection far enough for ib_insync initialization but then times out on positions/account updates/executions; meanwhile the Gateway maintains an established TCP connection to IBKR backend 8.17.22.31:4000 with ongoing traffic. This is consistent with Gateway/socket alive but brokerage/API session unusable after weekend reset rather than a dead local process. No current accessible plaintext log evidence of the historical Aug-31 COMPETE signature was found; the active detailed Gateway session log is encrypted (.ibgzenc), so absence of a plaintext COMPETE match is not by itself conclusive. Timing strongly favors weekend reset over a competing login.
+
+Separate confirmed defect remains: health_supervisor maps TimeoutError to ibkr_connection_status=UNKNOWN and alerts only CONNECTED->DISCONNECTED, so this persistent weekend-reset failure generated no Telegram disconnect/degraded alert. This alerting defect must be corrected independently of the IBKR weekly reauthentication workflow.
+
+[2026-09-13] WEEKLY_MAINTENANCE: START at 2026-09-13T08:00:24Z. Trading controller will stop; Ubuntu packages will be updated in controlled maintenance; server will reboot afterward. IB Gateway authentication may require user action after reboot.
+
+[2026-09-13] WEEKLY_MAINTENANCE: PACKAGE PHASE COMPLETE. Controlled reboot initiated; post-reboot Gateway/API authentication and reconciliation are required before trading resumes.
+
+[2026-09-13] IBKR HEALTH/ALERT STATE FIX — PERSISTENT API TIMEOUTS NO LONGER SILENT
+After the Sep 12 weekly-reset incident and the Sep 13 scheduled Ubuntu reboot/re-authentication, the health-supervisor defect was corrected. Previously, TimeoutError/MONITORING_CLIENT_BUSY/RUNTIMEERROR/LIVE_PROBE_SKIPPED were mapped to ibkr_connection_status=UNKNOWN and Telegram alerts were emitted only for CONNECTED->DISCONNECTED. As a result, a persistent API timeout could continue for hours without an alert, and supervisor payload status could remain OK solely because the controller heartbeat was fresh.
+
+New behavior: IBKR connection monitoring now distinguishes CONNECTED, UNKNOWN (brief/transient), DEGRADED (persistent API unresponsiveness) and DISCONNECTED (hard failure such as socket CONNECTION_REFUSED/Gateway absent). Three consecutive transient API failures promote the state to DEGRADED and emit exactly one ibkr_degraded Telegram alert for that episode. A hard disconnect emits ibkr_disconnected. Recovery from DEGRADED or DISCONNECTED emits ibkr_reconnected. The overall supervisor status is now OK only when heartbeat is fresh AND IBKR is CONNECTED; otherwise it reports STALE_HEARTBEAT, IBKR_UNKNOWN, DEGRADED_IBKR or IBKR_DISCONNECTED as appropriate. Trading remains fail-closed independently through the existing operational gates.
+
+Validation: new focused health-supervisor regression tests cover persistent TimeoutError -> DEGRADED + single alert, CONNECTION_REFUSED -> DISCONNECTED/non-OK, and DEGRADED -> CONNECTED recovery alert. 3/3 focused tests PASS plus 4/4 related Telegram/gateway tests PASS. IB Gateway was not restarted for this software change.
+
+[2026-09-13] MOBILE MANUAL CONSOLE SUBPROJECT — ARCHITECTURAL DECISION / NEW CHAT HANDOFF
+User requested a mobile equivalent of the existing TradingBotR1000 Manual Control Console. Existing server implementation was inspected directly: current_reference/PaperTradingR1000/manual_control_console.py provides Account Summary, Positions, Open Orders, BUY/SELL Limit, BUY/SELL Market, selected/global order cancellation, selected/emergency-all liquidation, market/liquid-hours status, Investable Capital Control, and latest broker execution history. It already contains long-only/safety checks, confirmations for destructive actions, PAPER-account controls and operational logging. Decision: do not duplicate this trading logic in a mobile client.
+
+Priority order explicitly set by user: (1) security is primary; (2) practicality/ease of use immediately follows. Preferred architecture is therefore a single deterministic server-side Manual Trading Service that owns all manual broker actions and safety validation, with interfaces/clients above it. Initial preferred mobile interface: private mobile web application/PWA reachable through a private VPN/Tailscale path rather than exposing the trading console directly to the public Internet. PC console and mobile interface should ultimately consume the same server-side manual-trading logic. A ChatGPT App can later be considered as an additional front end to the same backend, but the language model/UI must never be the authority for trading safety: PAPER/LIVE account validation, no-leverage, long-only, quantities, duplicate-order checks, IBKR connectivity, market/liquid-hours checks, confirmations and audit logging remain deterministic backend responsibilities.
+
+PROJECT ORGANIZATION DECISION: development of the Mobile Manual Console will continue in a dedicated new ChatGPT conversation, but it remains a TradingBotR1000 subproject and MUST continue using this same Master History file. New-chat handoff instruction: consult this Master History before design or code changes and continue from this MOBILE MANUAL CONSOLE entry. Do not create a separate Master History unless the user later explicitly changes this decision.
+
+
+[2026-09-14] MOBILE MANUAL CONSOLE — REQUIREMENTS v1 CLOSED / ARCHITECTURE PHASE START
+Requirements v1 finalized and stored at docs/MOBILE_MANUAL_CONSOLE_REQUIREMENTS_v1.md. Approved baseline: security first; reliability/fail-safe behavior second; ease of use third; functional parity with PC Manual Control Console. Mobile access should be app-like via PWA/home-screen icon and private network path (preferred Tailscale/VPN, architecture validation pending). Application-level authentication is required; preferred mechanism is passkey/WebAuthn with biometric/device-PIN verification, with TOTP/Google Authenticator considered optional recovery/secondary factor rather than primary authentication. No IBKR credentials or trading-safety authority reside on the phone. No long-lived remember-me session; use short-lived server-side sessions and secure cookies, and do not rely on browser closure alone for logout/security. Device portability and revocation are mandatory so phone replacement/loss does not require rebuilding TradingBotR1000. Mobile functionality must match the existing PC console and add a searchable Russell 1000 page from which a symbol can route into the same backend BUY/SELL flow. The UI remains untrusted; deterministic backend logic owns PAPER/LIVE safeguards, long-only/no unintended leverage, quantity/price validation, current-position and duplicate/conflicting-order checks, IBKR health/state, market/liquid-hours rules, confirmations and audit logging. Reliability requirements explicitly include lost connectivity, duplicate requests/double taps, stale state and uncertain broker acknowledgements; uncertain submission outcomes must be reconciled before retry. Architecture should reuse the existing Hetzner host and avoid unnecessary recurring cost. Controlled paper-trading validation is mandatory before operational acceptance; any future LIVE use requires a separate explicit acceptance decision. Requirements phase is now CLOSED; proceed to architecture design.
+
+[2026-09-14] MOBILE MANUAL CONSOLE - ARCHITECTURE/CHECKLIST BASELINE
+Architecture v1 has been formalized at docs/MOBILE_MANUAL_CONSOLE_ARCHITECTURE_v1.md. The active implementation checklist is now stored at docs/MOBILE_MANUAL_CONSOLE_IMPLEMENTATION_CHECKLIST_v1.md and is the canonical step-by-step implementation/acceptance tracker. Implementation order: B -> C -> D -> E -> F -> G -> H -> I -> J -> K; each block must be completed and verified before proceeding. Key fixed decisions: mobile preserves PC Manual Console behavior; PC/mobile share one server-side Manual Trading Core; BUY uses searchable existing IWB/R1000 universe; SELL selection is ONLY from currently held broker positions and is revalidated immediately before submission; phone never has IBKR credentials or direct IBKR authority; private PWA access via Tailscale/Tailscale Serve plus application authentication/passkey; uncertain broker submission outcomes must be reconciled and never treated as safe failures to retry. Initial server reconnaissance found Tailscale not yet installed, no nginx required, existing Python/ib_insync environment available, and UFW currently does not expose IBKR port 4002 externally; final exposure verification remains an acceptance item. No Mobile Manual Console production trading code has yet been modified. Next implementation block is B (prepare/protect existing system).
+
+[2026-09-14] MOBILE MANUAL CONSOLE - IMPLEMENTATION BLOCK B COMPLETE
+Preparation/protection block completed without modifying automatic trading logic. A frozen reference copy of the current PC console was created at docs/manual_control_console.reference_20260914.py. Existing manual_control_console.py was mapped into reusable broker/safety functions versus interactive PC UI functions, providing the extraction boundary for the shared Manual Trading Core. IBKR client IDs verified from current config: automatic 1000, manual 1001, reconciliation 1002, remote-control 1003; no relevant service environment override detected. Network inspection confirms IB Gateway currently listens on *:4002, while host UFW/nftables INPUT defaults to DROP and only SSH/22 is explicitly allowed; no inbound 4002 allow rule exists. Final external-reachability verification remains part of acceptance, and a more restrictive IB Gateway bind may be considered only if it can be done without operational regression. Checklist Block B marked COMPLETE. Next block: C - Shared Manual Trading Core.
+
+[2026-09-14] MOBILE MANUAL CONSOLE - BLOCK C COMPLETE
+Created current_reference/PaperTradingR1000/manual_trading_core.py as the shared implementation, preserving the previously operational PC console code. manual_control_console.py is now a compatibility wrapper exporting the same core functions and invoking the same run_console entry point. Compilation/import checks passed; manual client ID remains 1001 and all 15 menu entries remain available. Controlled startup connected to the local IBKR API, displayed the unchanged menu and exited normally without order submission. Read-only smoke checks retrieved account summary, 4 positions and 0 open orders; no broker-mutating function was called. pytest is not installed in the current venv, so no new dependency was added solely for this block. The existing non-fatal completed-orders timeout message was observed while requested connection/read operations still succeeded. Checklist Block C marked COMPLETE BASELINE. Next: Block D mobile safety/idempotency/reconciliation.
+
+[2026-09-14] MOBILE MANUAL CONSOLE - BLOCK D CORE SAFETY PRIMITIVES COMPLETE
+Shared Manual Trading Core hardened for future mobile/API use without sending broker orders. Added persistent server-side mobile request-ID reservation/state so repeated request IDs are deterministically recognized before mutation; SUBMITTING and UNKNOWN_PENDING_RECONCILIATION are fail-closed states. Existing order_safety persistent intent guard was retained as the lower-level duplicate/order-safety mechanism and verified with synthetic tests. Critical broker semantic corrected: once ib.placeOrder() has returned, any later exception while determining outcome is no longer reported as an ordinary safe failure; it raises BrokerActionUncertainError, audits UNKNOWN_PENDING_RECONCILIATION, retains available orderId/permId/clientId and explicitly prohibits blind retry until broker reconciliation. Synthetic tests passed for double-request detection, persistent active-intent duplicate blocking, fail-closed request state and simulated lost acknowledgement after submission; no real order was submitted. Remaining Block D integration work belongs with the Mobile API: wire request lifecycle around every mutation, implement reconciliation against IBKR open orders/executions, and enforce recent re-authentication for destructive actions.
+
+[2026-09-14] MOBILE MANUAL CONSOLE - BLOCK E R1000 DATA/SEARCH LAYER COMPLETE
+Mobile BUY selector will reuse the existing canonical repository-root IWB_holdings.csv maintained by the established weekly official iShares IWB refresh; no second Russell 1000 data source was introduced. Current file was refreshed on 2026-09-14, reports holdings as of 2026-09-11, and validates to 1018 unique USD Equity symbols. Added current_reference/PaperTradingR1000/mobile_r1000_selector.py: lightweight cached loader/search returning canonical ticker, IBKR ticker, company name, sector, exchange/expected IBKR primary exchange and currency. It reuses symbol_mapping.py for class-share normalization (tested BRK.B/BRK B and HEI.A), validates required columns and 950-1100 universe size, and caps search results to avoid a flat thousand-row mobile view. Search tests passed for ticker and company-name queries. BUY membership lookup is available. SELL deliberately does NOT use this universe: mobile SELL source remains current broker positions only, with backend revalidation before submission. Recent/Favorites are optional UI conveniences deferred to PWA implementation. Next: Block F Mobile API/PWA.
+
+[2026-09-14] MOBILE MANUAL CONSOLE - BLOCK F BASELINE COMPLETE
+Created local-only FastAPI/Uvicorn mobile_api.py and mobile_pwa/. Tested only on 127.0.0.1:8765; no Tailscale/public exposure yet. Read-only API/PWA uses the shared Manual Trading Core and R1000 selector and successfully returned PAPER-account status, account summary, 4 positions and BRK.B search using manual client 1001. IBKR work is serialized through one dedicated worker/client. All POST paths remain locked with HTTP 423 until authentication and reconciliation are wired. SELL remains sourced only from current broker positions. Test web server was stopped after validation. Next: Block G authentication/session/Tailscale.
+
+
+=== 2026-09-15 — Mobile console validation findings and approved operational requirements ===
+During simultaneous comparison of the newly installed Samsung Mobile Manual Console and the Telegram portfolio/status output, material data-path differences were observed. In particular, at least one position showed a materially different market value/unrealized P&L between Telegram and mobile at practically the same time. Mobile Market/Liquid Hours also returned UNKNOWN with `trusted time source unavailable`. Mobile Execution History returned no items although the operator reports at least two SELL executions during the same trading day. The mobile account identifier privacy correction is effective: mobile displays only PAPER/LIVE rather than the raw account identifier.
+
+Decision: do not enable mobile broker mutations until these discrepancies are resolved. PC console, Telegram and mobile must use a canonical server-side operational snapshot for common IBKR account/position/open-order data, with timestamp/source and defined freshness semantics.
+
+Approved execution-history design: create a persistent server-side execution ledger reconciled with IBKR and existing bot/order records. It must normalize executions across the automatic bot, PC manual console and mobile/manual API clients, deduplicate broker executions, and provide the authoritative Execution History independently of the lifetime of the current IBKR API session.
+
+Approved P&L requirement: expose cumulative Realized P&L from the earliest date for which history is reliably reconstructable, and explicitly show that start date. Also expose current Unrealized P&L and Combined P&L (cumulative realized + current unrealized), plus per-symbol cumulative realized P&L where reliable.
+
+Approved Telegram execution-alert requirement: BUY FILLED, SELL FILLED, PARTIAL FILL, REJECTED and CANCELLED are operational notification events. Fill alerts should include symbol, quantity, average fill price, notional/proceeds, timestamp and source; SELL alerts should include realized P&L when reliably available. Alerts must be independent of order origin and idempotent/deduplicated.
+
+Approved market-hours requirement: Market/Liquid-Hours is safety critical; steady-state UNKNOWN caused by an unavailable trusted time source is not acceptable. Submission must continue to fail closed where safety state cannot be established under the approved acknowledgement rules.
+
+Implementation sequencing: new Block H added to MOBILE_MANUAL_CONSOLE_IMPLEMENTATION_CHECKLIST_v1.md. Keep `MOBILE_MANUAL_MUTATIONS_ENABLED=0` throughout Block H. Diagnose current discrepancies first, then implement canonical snapshot, persistent execution ledger/reconciliation, cumulative P&L, Telegram execution alerts, regression tests, and controlled PAPER acceptance before any mobile mutation activation.
+
+[2026-09-15] Additional Telegram transparency requirement approved: whenever the bot reports a summary such as `4 orders planned`, Telegram must also list the actual planned symbols/orders so the operator can see in advance which titles currently satisfy the strategy's entry criteria. The Telegram list must come from the bot's canonical planning/output structure (not a separate recomputation) and should include action plus any already-determined quantity, order type and limit price, marking unresolved fields explicitly. Added as Block H15 in the Mobile Manual Console implementation checklist.
+
+
+2026-09-16 — Mobile Manual Console / Flex execution ledger / Telegram lifecycle
+- Established durable IBKR Flex Trade Confirmation execution ledger in the existing execution-history SQLite database. Initial durable import: 107 fills; repeat imports deduplicate existing fills.
+- Installed and verified `tradingbot-flex-sync.timer` for 15-minute Trade Confirmation synchronization. Latest checked oneshot completed successfully; timer active. Flex is the durable accounting/reconciliation source, not the desired primary real-time notification source.
+- Mobile Execution History and cumulative realized P&L now derive from the durable Flex ledger. Current imported history is partial; earliest observed execution must not be represented as complete account-history start.
+- Telegram requirements confirmed: report canonical PLANNED orders; distinguish SUBMITTED/PENDING from actual execution; notify execution lifecycle including partial fills, rejects and cancellations; one real execution must produce one notification regardless of bot/PC/mobile origin.
+- Synthetic Telegram lifecycle test passed with transport intercepted: no broker order and no real Telegram test spam.
+- Added persistent `execution_notifications` registry. Immediate IBKR API execution identity is `execId`; Trade Confirmation exposes corresponding `ibExecID`, allowing Flex to recognize an execution already notified by the API and suppress duplicate Telegram delivery.
+- Reconciliation code can now claim an IBKR API execution and build the immediate FILLED execution alert. Flex claims the same identity before its fallback alert. Database migration completed under `ibkradmin`; existing 107 fills remained intact and the notification registry initialized empty.
+- IMPORTANT remaining item: current reconciliation cadence must be inspected. If it is not event-driven/near-real-time, implement a persistent IBKR execution monitor/listener so Telegram receives API-confirmed fills within seconds. Flex remains a 15-minute accounting confirmation/fallback.
+- Partial-fill rule: an individual execution/fill is not automatically proof that the whole order is complete. Final completion may be stated only when broker order state establishes remaining quantity = 0.
+- Mobile broker mutations remain disabled during this work; no PAPER/LIVE order was submitted by these implementation/tests.
+- Added mandatory maintenance gate to the implementation checklist: after each completed block update project docs + Master History, review Git for secrets/runtime artifacts, commit/push relevant safe files to GitHub, then checkpoint SentinelX continuity.
+- Git repository confirmed at `/home/ibkradmin/trading/TradingbotR1000/.git`, branch `main`, configured GitHub origin. SentinelX sees Git's dubious-ownership protection because the repo belongs to `ibkradmin`; use per-command safe.directory for read-only inspection rather than changing global Git security configuration. Git commit/push still pending at this history entry and must occur only after reviewing the substantial pre-existing working-tree changes and excluding secrets/runtime data.
+
+
+[2026-09-16] GITHUB RECONCILIATION / SENTINELX GIT PATH RESTORED
+- Reconstructed the prior Git ownership issue: repository is owned by `ibkradmin`, while SentinelX normally runs as `sentinelx`; direct Git writes from the latter fail by design.
+- Added a narrowly scoped SentinelX command-policy entry for `sudo -u ibkradmin git`; no repository ownership change and no SSH private-key exposure were introduced.
+- Confirmed the practical automation path works through SentinelX one-off script execution while Git itself runs as `ibkradmin`. This removes the need for routine manual terminal Git commands.
+- Reviewed staged paths, excluded ignored runtime/secret material (including Flex secret config, execution-history database/raw Flex reports and Alerts), ran `git diff --cached --check`, staged-content secret-pattern checks, and Python compilation validation.
+- Committed and pushed the Mobile Manual Console / Flex execution tracking block to `origin/main` as `51b859cff39f218fa2901d4069d890b88ac2a0e4` (`Add mobile manual console and Flex execution tracking`). Remote `refs/heads/main` was queried after push and matched local HEAD exactly.
+- Master History remains local operational documentation and is intentionally not committed to GitHub.
+
+2026-09-16 — REAL-TIME EXECUTION NOTIFICATION HARDENING
+- Implemented dedicated read-only IBKR execution monitor (`execution_monitor.py`) with reserved client ID 1007 and long-lived `execDetailsEvent` subscription. Deployed/enabled as `tradingbot-execution-monitor.service`; service verified active and API connection established. No broker mutation capability exists in this monitor.
+- Flex remains the durable 15-minute accounting/reconciliation source and fallback notification source.
+- Corrected notification persistence semantics: broker execution observation and successful Telegram delivery are now separate states. Telegram is marked delivered only after the alert transport returns successfully, so transport failure remains retryable. API execId and Flex ibExecID use the same persistent identity to prevent duplicate delivery.
+- Migrated `flex_executions` with `ib_exec_id`/`ib_order_id`; all 107 existing fills were backfilled internally. Existing fill count remained 107 and no historical Telegram spam was generated.
+- Corrected lifecycle rendering to `PARTIALLY FILLED`.
+- Compilation plus synthetic retry/dedup tests passed. No PAPER/LIVE order was submitted. Mobile mutations remain disabled.
+- Final acceptance still requires a controlled PAPER fill to verify seconds-level API notification and subsequent Flex confirmation without duplicate Telegram delivery.
+- Git maintenance gate completed for this block: safe source/docs committed and pushed as ce698de6d777d07fce6cff4e978bccf00f37541f (`Add real-time IBKR execution notifications`); local HEAD verified exactly equal to origin/main. Master History remains local/not committed by policy.
+
+2026-09-16 — PAPER P&L BASELINE DECISION AND MOBILE ACCOUNT LABEL FIX
+- Operational PAPER performance baseline fixed at 2026-09-01. This is a fixed inception date, not a rolling 28-day window.
+- Added configurable PAPER_PNL_START_DATE (default 2026-09-01).
+- Mobile Account Summary now labels the metric as Realized P&L since bot start and explicitly shows the bot P&L starting date plus the Flex-confirmed through date.
+- Flex ledger P&L summary now filters executions on/after the configured start date and reports commissions separately.
+- Current imported Flex evidence is incomplete: first imported trade on/after start is 2026-09-09 and Flex is currently confirmed only through 2026-09-15. Therefore the present 16,230.58 USD is NOT yet accepted as complete since-start performance.
+- Diagnosed missing Python tzdata as cause of IBKR API execution parsing failures; tzdata installed in trading venv, execution monitor restarted, US/Eastern verified.
+- Direct read-only IBKR API query after repair recovered 14 BRKR SELL fills for 2026-09-16; these are not yet present in the current Flex report. Next step: persist current-day API fills in unified execution history and reconcile/enrich them when Flex confirms, without double counting.
+- No broker mutations enabled or executed by this maintenance block.
+
+2026-09-16 — Reporting requirement added: future production operation shall provide one automatic IBKR Flex report by email per day. Email is an operational/audit copy; server execution ledger remains authoritative. Missing expected daily delivery must be detectable. Exact schedule, recipient and retention to be configured before production activation.
+
+
+[2026-09-17] MOBILE/ORDER PIPELINE FULL REPAIR — SAFETY AND CANONICAL DATA INVARIANTS
+User explicitly required a complete repair rather than a narrow patch, bulletproof verification, continuous autonomous execution, and permanent documentation. The repair therefore treats the observed symptoms as end-to-end invariants.
+
+Root causes/findings: (1) broker snapshot positions use IBKR-compatible camelCase fields (`averageCost`, `marketPrice`, `marketValue`, `unrealizedPNL`) while the current PWA consumes canonical snake_case fields; `/api/positions` had been returning the raw snapshot, causing valid broker values to render as missing/zero in mobile. (2) Automated SELL planning already rejected a symbol absent from the fresh snapshot, and Telegram already labelled such stale SELL plans BLOCKED, but the automated transmission path did not independently invoke the shared broker-authoritative long-only guard immediately before `placeOrder`. This left defense-in-depth weaker than required. (3) `Pending orders` is broker state only: it is sourced from IBKR open orders and must never include merely planned/local orders. Planned/currently-valid orders remain a distinct pre-submission concept.
+
+Permanent invariants implemented: `/api/positions` now normalizes broker position rows at the API boundary to stable mobile fields (`average_cost`, `market_price`, `market_value`, `unrealized_pnl`, etc.) while retaining raw fields for compatibility. Automated SELL now has two independent gates: snapshot planning requires a positive live position, and immediately before broker submission the shared `order_safety` guard refreshes broker positions/open orders, subtracts pending SELL quantity, and rejects any request whose projected position would be negative. A stale scan can therefore never by itself authorize a SELL. The mobile console remains mutation-disabled during verification.
+
+Operational terminology is fixed: PLANNED/CURRENTLY VALID = local strategy intent not necessarily sent; PENDING/SUBMITTED = broker-visible open order with remaining quantity; FILLED/PARTIALLY FILLED/CANCELLED/REJECTED are broker lifecycle states. Telegram `/portfolio` Pending orders remains broker-authoritative.
+
+
+=== 2026-09-17 COMPLETE REPAIR / ORDER-LIFECYCLE FORENSICS ===
+Scope: mobile console, Telegram/order-state semantics, long-only SELL safety, IBKR time/position data, and forensic reconstruction of 2026-09-16 BNY/JHX/NTRS orders.
+
+FORENSIC FACTS (broker/local evidence):
+- 2026-09-16 13:30:02Z: BUY BNY 857 LMT 150.03 transmitted, IB API orderId 114, permId 2044028455; acknowledged PreSubmitted, 0 filled, 857 remaining.
+- 2026-09-16 13:30:02Z: BUY JHX 4899 LMT 26.25 transmitted, orderId 116, permId 2044028456; acknowledged PreSubmitted, 0 filled, 4899 remaining.
+- 2026-09-16 13:30:02Z: BUY NTRS 741 LMT 173.38 transmitted, orderId 118, permId 2044028457; acknowledged PreSubmitted, 0 filled, 741 remaining.
+- automated_broker.py explicitly constructed all automated LIMIT/MARKET orders with tif=DAY. Therefore these orders were not intended to survive beyond that trading session.
+- Current fresh broker evidence shows zero open orders and no fills for BNY/JHX/NTRS; current position is ABNB only. The three BUYs did not execute.
+- Available retained API/local evidence does NOT contain IBKR's exact final cancellation timestamp/reason. It is therefore incorrect to invent a precise pre-close cancellation cause. The durable store now records them UnknownFinal with broker_order_no_longer_open when a fresh complete broker snapshot proves they are no longer open.
+- Important distinction: DAY explains why the orders cannot persist overnight. It does not, by itself, prove why a UI may have stopped showing them before the closing bell. Exact earlier disappearance is not recoverable from retained logs.
+
+REPAIRS:
+- Mobile position schema normalized: average_cost, market_price, market_value, unrealized_pnl and realized_pnl are populated from IBKR camelCase fields while retaining compatibility aliases. Live verification returned full ABNB values rather than N/A.
+- Market-hours path verified against IBKR server time; ABNB returned known=true, trading_open=true, liquid_open=true, time_source=IBKR_SERVER_TIME. tzdata/US-Eastern resolution verified working in production venv.
+- Long-only SELL safety hardened at final broker submission boundary. Immediately before placeOrder, fresh broker positions and all open orders are re-read; pending SELL quantity is deducted; any SELL producing projected position < 0 fails closed. A synthetic stale BRKR SELL with no live position was rejected with broker_orders_transmitted=0.
+- Automated SELL submission now uses OrderIntentGuard around the final placeOrder boundary and records uncertain submission outcomes rather than incorrectly labelling an exception as a definite rejection.
+- Telegram status separates current valid plans from stale/blocked SELL plans; portfolio Pending orders are broker-open orders, not merely local plans.
+- Reconciliation hardened: locally active orders with broker IDs that disappear from a fresh complete broker open-order snapshot no longer remain permanently PreSubmitted. They transition to UnknownFinal without fabricating an unsupported cancellation cause.
+- Mobile manual mutations remain disabled (MOBILE_MANUAL_MUTATIONS_ENABLED=0).
+
+VALIDATION:
+- Operational targeted regression suite: 54 tests, all passed.
+- Full project discovery: 70 operational/strategy tests passed; 4 unrelated backtest/short-strategy import/setup errors remain because optional/missing backtest modules/files are absent. These are outside live TradingbotR1000 operational code and were not treated as operational failures.
+- Live read-only IBKR check: current position ABNB 1176; zero open orders.
+- Synthetic phantom BRKR SELL dry run: rejected no_live_position_quantity; proof_no_broker_order_transmitted=true.
+- Controller intentionally remains STOPPED during repair/acceptance; no live/paper broker order was transmitted by this repair.
+
+DESIGN DECISION REQUIRED FOR FUTURE ENTRY ORDERS:
+Automated entry orders are currently DAY by explicit code. If strategy intent is instead to keep an unfilled limit order beyond the session, that is a strategy/order-policy change (e.g. GTC or controlled resubmission) and must be decided explicitly rather than silently changed during a repair.
+
+FINAL VERIFICATION ADDENDUM 2026-09-17:
+- A subsequent live read-only sample exposed an intermittent race: positions could arrive before IBKR portfolio market/P&L fields, yielding N/A. operational_api_snapshot.snapshot_positions was hardened with a bounded wait for portfolio updates on the already-connected read-only session.
+- After mobile-console restart, two consecutive live samples returned ABNB qty 1176, averageCost 169.305003, marketPrice 165.57772825, marketValue 194719.41, unrealizedPNL -4383.28; open orders 0 in both samples.
+- Final operational regression suite repeated after this change: 54/54 tests passed.
+- Final service state: controller INACTIVE intentionally; mobile console ACTIVE; Telegram ACTIVE; health supervisor/execution monitor/IB Gateway ACTIVE. No order was transmitted during repair verification.
+
+[2026-09-17] MISSED DAILY CYCLE FORENSICS / WATCHDOG HARDENING
+User correctly challenged the apparent absence of Sep-17 candidates. Forensics proved there was no Sep-17 strategy scan at all: scheduler state and scan/order-plan files remained on 2026-09-16. The controller had been intentionally stopped during the repair session at 2026-09-17 13:22:55 UTC, six minutes before the configured 09:28 ET / 13:28 UTC daily cycle. Therefore the absence of Sep-17 orders cannot be interpreted as zero qualifying securities. The Sep-17 daily IBKR market-data refresh had completed successfully at 12:44:28 UTC: 1017/1017 symbols updated, latest completed session 20260916, failures=0, trading_may_proceed=true.
+
+A monitoring gap was also confirmed: stopping the controller before the cycle could leave the system without an explicit "daily cycle missed" alarm. health_supervisor.py now contains an independent daily-cycle watchdog. On an eligible US market day, after a 15-minute grace beyond the configured 09:28 ET cycle, absence of today's recorded cycle produces strategy_cycle_watchdog=MISSED and a deduplicated strategy_cycle_missed alert; with otherwise healthy IBKR/heartbeat the overall state becomes STRATEGY_CYCLE_MISSED. Existing IBKR disconnect/degraded and stale-heartbeat states retain precedence. This watchdog never launches trading or submits orders; it is detection only.
+
+The repeated `completed orders request timed out` journal message was traced specifically to the health-supervisor PID and ib_insync's optional connect-time completed-order synchronization. It was not the scheduler failure and did not explain the missed Sep-17 scan. The health probe remains read-only and now locally suppresses that known library warning while continuing to evaluate current server time/account/positions/open orders/market-hours evidence. After patching, the health probe returned CONNECTED without the recurring completed-orders warning.
+
+Documentation drift found and corrected: PROJECT_SPECIFICATION said 09:35 ET while runtime config and scheduler tests use 09:28 ET. The specification now matches 09:28 ET.
+
+Current activation preflight with the controller environment explicitly enabled: PASS; PAPER account confirmed; IBKR live API CONNECTED; broker state RECONCILED; positions=1 (ABNB); open orders=0; market data current through 20260916; 1017 symbols loaded; critical exclusions=0. Controller deliberately remains stopped pending the final no-transmission acceptance simulation and restart/service verification before tomorrow's session.
+
+[2026-09-17] TOMORROW READINESS ACCEPTANCE / SAFE RESUME
+Operational regression suite after all Sep-17 repairs: 76/76 existing non-backtest operational/support tests PASS, including automated order workflow, long-only order safety, no-leverage capital budget, scheduler, health, Telegram, mobile schema, runtime recovery, strategy core and trading engine. The four previously known optional/missing backtest/short-strategy setup modules were deliberately excluded from this operational acceptance because they are not part of the live runtime.
+
+A full end-to-end strategy scan was then executed from a temporary hard-linked project clone with automated execution explicitly OFF, so canonical production state/reports were not changed and no broker order could be transmitted. It used the live PAPER broker account and current IBKR-refreshed daily data through 20260916. Result: market-data compliance OK, reconciliation RECONCILED, broker_orders_transmitted=0, and four genuine current entry candidates were found: RVMD limit 190.04, NTRS 171.34, MS 196.35, IVZ 29.18. This confirms the Sep-17 absence of orders was a missed cycle, not absence of qualifying securities.
+
+Activation preflight with the real controller execution environment passed: PAPER account, API connected, zero broker open orders, current market data, reconciliation clean. Because the Sep-17 cycle is already overdue, starting the controller immediately would cause is_cycle_due() to execute the missed Sep-17 cycle late in the day, which is not acceptable. Therefore the controller remains intentionally inactive tonight. A one-shot systemd resume timer was installed/enabled for 2026-09-18 11:45 UTC (07:45 ET), before the normal 08:30 ET market-data refresh and 09:28 ET strategy cycle. 2026-09-18 is confirmed by the scheduler as an eligible market session. The controller service itself remains enabled and retains automated PAPER execution switch=1.
+
+The synthetic SAFETY-PHANTOM-BRKR test had overwritten reports/automated_execution_report.json. This canonical-report contamination was repaired by reconstructing the Sep-16 production execution report from the durable automated-order store; future acceptance scans use isolated temporary project state.
+
+[2026-09-18] FINAL FORENSIC FOLLOW-UP BEFORE SEP-18 SESSION
+Historical/source review established that automated BUY LIMIT orders being DAY is not an accidental Sep-16 regression: on Aug-28 IBKR warning 10349 exposed an unspecified-TIF defect, and the accepted repair explicitly set tif=DAY. The Aug-31 real PAPER end-to-end acceptance then verified DAY orders and documented that unfilled orders may remain open until filled or expire at session end. The source-video transcript describes placing the 3% limit based on the previous close and tests whether the NEXT DAY reaches that level; PROJECT_SPECIFICATION defines the order as intended for the next trading day. Therefore changing BUY orders to GTC or automatic blind carry-forward would be an unapproved strategy-policy change and was NOT done.
+
+Sep-16 BNY/JHX/NTRS were genuine DAY orders acknowledged PreSubmitted by IBKR and unfilled. Retained evidence still cannot establish the exact broker finalization timestamp/reason; DAY explains non-persistence beyond the session but not an alleged earlier-than-close disappearance. No unsupported cancellation cause is recorded.
+
+A separate confirmed Telegram defect remained: render_status() treated every saved BUY plan in the last scan report as CURRENTLY VALID even on a later ET date. It is now date-gated: only plans from today's ET strategy cycle may appear under PLANNED/CURRENTLY VALID. Older BUY/SELL plans appear under STALE / NOT CURRENT and cannot be represented as current broker orders. Live verification on Sep-18 before the US session showed Last scan Sep-16, Orders currently valid=0, with BNY/JHX/NTRS and BRKR explicitly stale. Regression test added and passed. Telegram service restarted; controller intentionally remains inactive pending its scheduled pre-session resume.

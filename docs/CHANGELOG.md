@@ -63,3 +63,9 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Final Sep-17 readiness: 76/76 operational/support tests passed. Isolated no-transmission end-to-end scan against current data found RVMD/NTRS/MS/IVZ and reconciled cleanly with 0 broker transmissions.
 - Added one-shot `tradingbot-controller-resume.timer` for 2026-09-18 11:45 UTC (07:45 ET), intentionally before the 08:30 ET data refresh and 09:28 ET cycle. Controller is not started late on Sep-17 because scheduler catch-up semantics would execute today's missed cycle immediately.
 - Restored canonical automated execution report after synthetic BRKR safety test contamination, using durable Sep-16 automated-order evidence.
+
+## 2026-09-18 - Stale Telegram plan status corrected
+- Forensic review confirmed automated BUY LIMIT tif=DAY is an established accepted policy, introduced after IBKR warning 10349 on 2026-08-28 and exercised in the 2026-08-31 PAPER end-to-end acceptance. No GTC/carry-forward strategy change was made.
+- Corrected Telegram /status: saved BUY plans from an earlier ET date are no longer labelled PLANNED / CURRENTLY VALID; they are shown as STALE / NOT CURRENT.
+- Added regression coverage proving a previous-day BUY plan produces Orders currently valid: 0.
+- Sep-16 BNY/JHX/NTRS exact final broker cancellation/expiry timestamp remains unavailable from retained evidence; no fabricated cause is assigned.

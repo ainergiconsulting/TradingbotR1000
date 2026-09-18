@@ -44,5 +44,40 @@ class TelegramMonitoringTests(unittest.TestCase):
         self.assertIn("Pending: 569", text)
 
 
+    def test_status_does_not_label_previous_day_buy_plan_current(self):
+        from unittest.mock import patch
+        import telegram_commands
+        fake_status = {
+            "runtime_health": {"strategy_engine_state": "IDLE"},
+            "scan_report": {
+                "timestamp_utc": "2026-09-16T13:28:53Z",
+                "selected_candidates": [{"symbol": "BNY"}],
+                "order_plans": [{"symbol": "BNY", "allocation_value": 1000, "limit_price": 150.03}],
+                "sell_order_plans": [],
+            },
+        }
+        fake_snapshot = {
+            "account_values": {
+                "net_liquidation": 1000000, "cash": 900000,
+                "available_funds": 900000, "buying_power": 3600000,
+                "lookahead_available_funds": 900000,
+            },
+            "positions": [], "open_orders": [], "account_mode": "PAPER",
+        }
+        class FakeDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                from datetime import datetime as real_datetime, timezone
+                return real_datetime(2026, 9, 17, 16, 0, tzinfo=timezone.utc)
+            @classmethod
+            def fromisoformat(cls, value):
+                from datetime import datetime as real_datetime
+                return real_datetime.fromisoformat(value)
+        with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "datetime", FakeDateTime):
+            text = telegram_commands.render_status()
+        self.assertIn("Orders currently valid: 0", text)
+        self.assertIn("BUY BNY | previous scan; not a current broker order", text)
+        self.assertNotIn("PLANNED / CURRENTLY VALID:", text)
+
 if __name__ == "__main__":
     unittest.main()
