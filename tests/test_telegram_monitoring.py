@@ -76,7 +76,8 @@ class TelegramMonitoringTests(unittest.TestCase):
         with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "datetime", FakeDateTime):
             text = telegram_commands.render_status()
         self.assertIn("Orders currently valid: 0", text)
-        self.assertIn("BUY BNY | previous scan; not a current broker order", text)
+        self.assertNotIn("BUY BNY", text)
+        self.assertNotIn("STALE / NOT CURRENT", text)
         self.assertNotIn("PLANNED / CURRENTLY VALID:", text)
 
 if __name__ == "__main__":

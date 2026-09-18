@@ -69,3 +69,9 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Corrected Telegram /status: saved BUY plans from an earlier ET date are no longer labelled PLANNED / CURRENTLY VALID; they are shown as STALE / NOT CURRENT.
 - Added regression coverage proving a previous-day BUY plan produces Orders currently valid: 0.
 - Sep-16 BNY/JHX/NTRS exact final broker cancellation/expiry timestamp remains unavailable from retained evidence; no fabricated cause is assigned.
+
+## 2026-09-18 - Pre-session runtime/status correction
+- Removed previous-day strategy plans entirely from Telegram /status; historical plans are not operational status.
+- Started the controller before the scheduled cycle after proving is_cycle_due=False, eliminating the misleading STOPPED runtime and stale heartbeat while preserving the normal 08:30 ET refresh / 09:28 ET cycle.
+- Removed the obsolete 07:45 ET one-shot resume timer after starting the controller.
+- Live verification: Runtime RUNNING, heartbeat fresh, Gateway/API connected, reconciliation RECONCILED, zero current orders; Trading enabled remains false only because the US market is currently closed/outside liquid hours.

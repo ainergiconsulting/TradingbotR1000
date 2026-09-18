@@ -89,19 +89,15 @@ def render_status() -> str:
             if order_type == "LIMIT" and limit_price not in (None, ""):
                 detail += f" @ ${float(limit_price):,.2f}"
             lines.append(detail)
-    if stale_buy_plans or stale_sell_plans:
-        lines.extend(["", "STALE / NOT CURRENT:"])
-        for row in stale_buy_plans:
+    # Previous-day plans are historical evidence, not operational status.
+    # Do not show them in /status. A same-day SELL that is no longer covered
+    # remains visible as BLOCKED because it is a current-cycle safety event.
+    current_blocked_sells = stale_sell_plans if scan_is_current else []
+    if current_blocked_sells:
+        lines.extend(["", "BLOCKED:"])
+        for row in current_blocked_sells:
             symbol = str(row.get("symbol") or "?").upper()
-            lines.append(f"- BUY {symbol} | previous scan; not a current broker order")
-        for row in stale_sell_plans:
-            symbol = str(row.get("symbol") or "?").upper()
-            reason = (
-                "previous scan"
-                if not scan_is_current
-                else "no current IBKR position"
-            )
-            lines.append(f"- SELL {symbol} | BLOCKED: {reason}")
+            lines.append(f"- SELL {symbol} | no current IBKR position")
     lines.extend([
         "",
         f"Account equity (NLV): ${net_liquidation:,.2f}",
