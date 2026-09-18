@@ -84,3 +84,9 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 ## 2026-09-18 - Pre-scan status no longer implies zero candidates
 - Before the scheduled 09:28 ET strategy cycle, Telegram /status now reports Today's scan: PENDING and Selected today: N/A (not evaluated yet), rather than zero.
 - This prevents interpreting a not-yet-run scan as a completed scan with no qualifying securities.
+
+## 2026-09-18 - Scan timing rationale documented
+- Clarified that the strategy uses completed daily bars from the prior completed US session; 09:28 ET is not a strategy-data requirement.
+- Git history confirms 09:28 ET was introduced as a pre-open computation time paired with separate 09:30 ET order transmission.
+- The execution path refreshes live account/positions/open orders again immediately before transmission, so broker-state freshness does not require the signal scan itself to wait until 09:28.
+- No timing change applied yet; decoupling candidate generation from market-open transmission is now explicitly documented for operator decision.
