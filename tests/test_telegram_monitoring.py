@@ -75,8 +75,8 @@ class TelegramMonitoringTests(unittest.TestCase):
                 return real_datetime.fromisoformat(value)
         with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "datetime", FakeDateTime):
             text = telegram_commands.render_status()
-        self.assertIn("Today's scan: NOT RUN YET", text)
-        self.assertIn("Selected today: 0", text)
+        self.assertIn("Today's scan: PENDING", text)
+        self.assertIn("Selected today: N/A (not evaluated yet)", text)
         self.assertIn("Orders currently valid: 0", text)
         self.assertNotIn("BUY BNY", text)
         self.assertNotIn("STALE / NOT CURRENT", text)

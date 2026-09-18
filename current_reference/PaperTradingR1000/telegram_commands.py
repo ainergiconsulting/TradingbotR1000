@@ -75,9 +75,9 @@ def render_status() -> str:
         ])
     else:
         lines.extend([
-            "Today's scan: NOT RUN YET",
+            f"Today's scan: PENDING (scheduled {cfg.STRATEGY_CYCLE_TIME_ET} ET)",
             f"Last completed scan: {scan.get('timestamp_utc', 'none')}",
-            "Selected today: 0",
+            "Selected today: N/A (not evaluated yet)",
             "Orders currently valid: 0",
         ])
     if valid_plans:

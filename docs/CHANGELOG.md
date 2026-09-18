@@ -80,3 +80,7 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - /status no longer mixes the previous completed scan's Selected count with today's current-order count.
 - Before today's 09:28 ET strategy cycle, /status explicitly reports Today's scan: NOT RUN YET, Last completed scan, Selected today: 0, Orders currently valid: 0.
 - After today's scan, the existing current-cycle branch reports today's selected count and current plan details.
+
+## 2026-09-18 - Pre-scan status no longer implies zero candidates
+- Before the scheduled 09:28 ET strategy cycle, Telegram /status now reports Today's scan: PENDING and Selected today: N/A (not evaluated yet), rather than zero.
+- This prevents interpreting a not-yet-run scan as a completed scan with no qualifying securities.
