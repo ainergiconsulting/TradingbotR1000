@@ -66,10 +66,20 @@ def render_status() -> str:
     lines = [
         f"{cfg.BOT_NAME} status",
         f"Engine: {health.get('strategy_engine_state', 'not checked')}",
-        f"Last scan: {scan.get('timestamp_utc', 'none')}",
-        f"Selected: {len(scan.get('selected_candidates', []))}",
-        f"Orders currently valid: {len(valid_plans)}",
     ]
+    if scan_is_current:
+        lines.extend([
+            f"Today's scan: {scan.get('timestamp_utc', 'none')}",
+            f"Selected today: {len(scan.get('selected_candidates', []))}",
+            f"Orders currently valid: {len(valid_plans)}",
+        ])
+    else:
+        lines.extend([
+            "Today's scan: NOT RUN YET",
+            f"Last completed scan: {scan.get('timestamp_utc', 'none')}",
+            "Selected today: 0",
+            "Orders currently valid: 0",
+        ])
     if valid_plans:
         lines.extend(["", "PLANNED / CURRENTLY VALID:"])
         for row in valid_plans:

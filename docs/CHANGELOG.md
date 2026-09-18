@@ -75,3 +75,8 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Started the controller before the scheduled cycle after proving is_cycle_due=False, eliminating the misleading STOPPED runtime and stale heartbeat while preserving the normal 08:30 ET refresh / 09:28 ET cycle.
 - Removed the obsolete 07:45 ET one-shot resume timer after starting the controller.
 - Live verification: Runtime RUNNING, heartbeat fresh, Gateway/API connected, reconciliation RECONCILED, zero current orders; Trading enabled remains false only because the US market is currently closed/outside liquid hours.
+
+## 2026-09-18 - Telegram status semantics clarified
+- /status no longer mixes the previous completed scan's Selected count with today's current-order count.
+- Before today's 09:28 ET strategy cycle, /status explicitly reports Today's scan: NOT RUN YET, Last completed scan, Selected today: 0, Orders currently valid: 0.
+- After today's scan, the existing current-cycle branch reports today's selected count and current plan details.
