@@ -90,3 +90,8 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Git history confirms 09:28 ET was introduced as a pre-open computation time paired with separate 09:30 ET order transmission.
 - The execution path refreshes live account/positions/open orders again immediately before transmission, so broker-state freshness does not require the signal scan itself to wait until 09:28.
 - No timing change applied yet; decoupling candidate generation from market-open transmission is now explicitly documented for operator decision.
+
+## 2026-09-18 - Weekend scan/execute decoupling work scheduled
+- No production behavior change today.
+- Added docs/WEEKEND_SCAN_DECOUPLING_PLAN_2026-09-19.md with the implementation, test and acceptance plan for separating post-refresh strategy PREPARE from 09:30 ET broker EXECUTE.
+- Work is scheduled to begin Saturday 2026-09-19 and finish before the US market reopens Monday 2026-09-21.
