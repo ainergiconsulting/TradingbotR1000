@@ -946,3 +946,9 @@ Verification:
 - Full discovery retains only the same four previously known optional/missing backtest/short-strategy errors; no new operational/runtime failure.
 
 Acceptance conclusion: no new live order test is required solely for this change because the live broker execution path is unchanged. The acceptance requirement is to prove early strategy equivalence, no broker-path entry during preview, unchanged execution code, and correct advance Telegram disclosure; all were satisfied.
+
+
+[2026-09-19] MINIMAL EARLY-PREVIEW DEPLOYMENT STATUS
+The corrected minimal implementation was promoted by fast-forward to main at b57a1c0 and pushed to GitHub; local main and origin/main match. The obsolete over-broad weekend-scan-decoupling branch and the temporary minimal acceptance branch were removed locally and remotely, leaving only main. Telegram and health-supervisor services were restarted so their running processes use current main code. No broker order was transmitted during this work.
+
+Controller process state remains inactive and its systemd unit remains disabled from the weekend acceptance hold. SentinelX host policy allows status/restart for tradingbot-controller.service but does not allow a direct start action. The denied start permission was not bypassed or expanded. Code/readiness verification is complete; controller activation is a separate operational action.

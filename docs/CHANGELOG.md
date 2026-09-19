@@ -108,3 +108,12 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Isolated preview verification proved that `wait_until_order_transmission_time()` and `process_order_plan()` are not reached, canonical scan/order/execution report hashes are unchanged, and live PAPER broker state is unchanged.
 - Expanded operational/support suite passed 87/87; full discovery still reports only the same four pre-existing optional backtest/short-strategy setup/import errors.
 - Because the broker execution path is unchanged, no new live order acceptance is required solely for this feature.
+
+
+## 2026-09-19 - Minimal preview promoted to main
+
+- The verified minimal early-order-preview implementation was fast-forwarded to `main` at commit `b57a1c0` and pushed; local and remote `main` match.
+- The superseded broad refactor branches were deleted locally and remotely to prevent accidental deployment.
+- Telegram and health-supervisor services were restarted after promotion so they are running code from current `main`.
+- No broker order was transmitted during implementation or verification.
+- The trading controller remains inactive and systemd-disabled from the acceptance hold. SentinelX policy currently permits status/restart but not a direct `start` action for this service; that restriction was not bypassed.
