@@ -54,6 +54,7 @@ TELEGRAM_CONFIG_FILE = BASE_DIR / "telegram_config.json"
 TELEGRAM_CONFIG_EXAMPLE_FILE = BASE_DIR / "telegram_config.example.json"
 
 SCAN_REPORT_FILE = REPORTS_DIR / "daily_scan_report.json"
+PREOPEN_PREVIEW_REPORT_FILE = REPORTS_DIR / "preopen_preview_report.json"
 ORDER_PLAN_FILE = REPORTS_DIR / "order_plan.json"
 RECONCILIATION_REPORT_FILE = REPORTS_DIR / "reconciliation_report.json"
 CONTROL_CENTER_EXPORT_FILE = REPORTS_DIR / "control_center_status_export.json"

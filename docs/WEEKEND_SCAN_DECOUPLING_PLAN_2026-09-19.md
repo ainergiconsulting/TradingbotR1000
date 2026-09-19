@@ -1,57 +1,82 @@
-# TradingBotR1000 - Weekend Scan/Execution Decoupling Plan
+# TradingBotR1000 - Weekend Early Order Evaluation Plan
 
-Status: PLANNED ONLY - NO PRODUCTION CHANGE ON 2026-09-18
-Planned work window: Saturday 2026-09-19 through Sunday 2026-09-20
-Target: complete implementation and acceptance before US market reopens Monday 2026-09-21.
+Status: IMPLEMENTED AND VERIFIED ON MINIMAL ACCEPTANCE BRANCH
+Work window: Saturday 2026-09-19
+Target: complete the requested early order evaluation/disclosure without changing the proven broker execution path.
 
-## Objective
-Decouple strategy candidate preparation from broker order transmission without changing the approved trading strategy.
+## Scope correction
 
-Current flow:
-08:30 ET market-data refresh -> 09:28 ET scan -> 09:30 ET broker transmission.
+The original weekend draft proposed a broader PREPARE/EXECUTE redesign. During implementation review the operator clarified the actual requirement:
 
-Target flow:
-08:30 ET market-data refresh -> scan immediately after successful refresh -> PREPARED plan + Telegram details -> wait -> 09:30 ET live broker revalidation -> EXECUTE -> reconciliation + Telegram broker status.
+1. Strategy inputs are completed daily bars from the prior completed US session.
+2. Therefore candidate/order evaluation does not need to wait until 09:28 ET.
+3. As soon as the 08:30 ET daily-bar refresh completes successfully, the bot should evaluate the planned orders and disclose their details on Telegram.
+4. The existing 09:28 strategy cycle and 09:30 broker transmission behavior should otherwise remain unchanged.
 
-## Invariants
-- Strategy inputs remain completed daily bars from the prior completed US session.
-- No change to SMA, Bollinger, RSI, ranking, 97% BUY limit, max positions, long-only, no leverage, or DAY order policy.
-- No broker order may be transmitted during implementation/testing until the explicitly controlled PAPER acceptance phase.
-- IBKR remains authoritative for positions, open orders, available funds and order status.
-- Final quantities are determined/revalidated immediately before transmission from live capital and broker state.
-- SELL safety is rechecked immediately before placeOrder().
-- Any stale/corrupt/mismatched prepared plan fails closed.
-- Late execution beyond the approved execution window must fail closed.
+The broader execution-path refactor was therefore abandoned and was not promoted to production.
 
-## Planned implementation
-1. Introduce separate PREPARE and EXECUTE lifecycle states.
-2. Persist prepared-plan metadata: trade date, signal date, prepared timestamp, cycle/plan ID, market-data latest session, strategy version, configuration SHA256, candidate details, limit prices and execution state.
-3. Trigger PREPARE immediately after successful 08:30 ET market-data refresh, rather than waiting until 09:28.
-4. Preserve 09:30 ET as broker transmission time.
-5. At EXECUTE, refresh broker/account evidence and revalidate PAPER account, market/liquid hours, current positions, all open orders, operational buy budget, available slots, duplicate prevention, long-only SELL guard, and prepared-plan date/session/config/version integrity.
-6. Recalculate/finalize order quantities at EXECUTE using live operational capital.
-7. Add a maximum late-execution window. If missed, mark execution MISSED and transmit nothing.
-8. Split scheduler state into preparation and execution evidence.
-9. Add separate watchdogs for PREPARE not completed by deadline and EXECUTE not completed after 09:30 ET.
-10. Update Telegram lifecycle semantics: PENDING -> PREPARED -> SUBMITTED/PENDING; never show prior-day plans as current.
+## Implemented minimal flow
 
-## Estimated engineering time
-Expected controlled implementation/testing effort: approximately 5-7 hours.
-Plan the work as a full weekend task rather than a quick time-setting change.
+08:30 ET daily-bar refresh
+-> immediately after successful same-day refresh: early read-only order-plan evaluation
+-> persist reports/preopen_preview_report.json
+-> Telegram sends planned symbols, BUY/SELL side, planned quantity, order type and LIMIT price where applicable
+-> no broker order is sent
+-> 09:28 ET regular strategy cycle runs unchanged
+-> 09:30 ET existing broker execution path runs unchanged
 
-## Test and acceptance plan
-A. Deterministic scheduler tests across pre-refresh, post-refresh, 09:30, late window, weekends, holidays and DST.
-B. Failure injection for IBKR disconnects, incomplete/stale data, permission failures, stale/corrupt plans, config changes, controller restarts, capital changes, manual position changes, duplicate/open orders and zero-candidate days.
-C. Strategy-equivalence test: same completed bars must generate identical candidates, rankings, BUY limits and exit signals before/after decoupling.
-D. Isolated full-cycle no-transmission test using temporary state.
-E. Capital/sizing matrix proving aggregate BUY notional never exceeds operational buy budget and margin buying power never increases spendable capital.
-F. SELL/long-only tests immediately before broker mutation.
-G. Telegram lifecycle/output tests.
-H. Controlled PAPER broker-path acceptance using minimum size only after all prior tests pass.
-I. Full PAPER session validation and next-day rollover validation.
+The early evaluation is informational/operational control evidence. It uses the same strategy engine and same completed bars as the later regular cycle. If account state changes between the early evaluation and 09:28, the regular cycle remains authoritative.
 
-## Weekend completion criteria
-Do not declare complete unless all new and existing operational tests pass; PREPARE and EXECUTE are independently idempotent; restart scenarios cannot duplicate orders; stale plans cannot execute; late execution cannot occur outside the approved window; Telegram semantics match broker/state semantics; isolated E2E proves zero unintended broker mutations; controlled PAPER acceptance passes; Master History, CHANGELOG, specification and Git are updated; and Monday pre-market readiness check passes.
+## Safety invariants
+
+- No strategy parameter changed.
+- SMA, Bollinger, RSI, ranking, 97% BUY limit, max positions, long-only, no-leverage and DAY TIF remain unchanged.
+- strategy_scheduler.py is unchanged.
+- automated_broker.py is unchanged.
+- automated_order_store.py is unchanged.
+- order_safety.py is unchanged.
+- The existing execution block in trading_engine.py from the 09:30 wait through process_order_plan/reconciliation is byte-identical to main.
+- Early evaluation forces the initial broker connection read-only and returns before wait_until_order_transmission_time() and process_order_plan().
+- Canonical production scan/order/execution reports are not overwritten by the early preview.
+- A failed early preview does not prevent or replace the existing regular 09:28 strategy cycle.
+- The preview is generated once per eligible session after a successful same-day refresh; a mismatched preview/data session is regenerated.
+
+## Operator disclosure
+
+Telegram pre-open alert/status includes:
+- signal session;
+- selected candidate count;
+- every planned BUY/SELL;
+- planned quantity calculated from the early account snapshot;
+- LIMIT/MARKET order type;
+- LIMIT price where applicable;
+- Broker submitted: 0;
+- explicit statement that the normal 09:28/09:30 cycle remains authoritative.
+
+The planned quantity is an advance estimate. The regular strategy cycle continues to use the then-current account/broker state, exactly as before.
+
+## Verification completed
+
+- Focused preview/controller/Telegram tests passed.
+- Expanded operational/support regression suite passed 87/87.
+- Full test discovery still reports only the four pre-existing optional backtest/short-strategy setup/import errors; no new runtime failure was introduced.
+- Real-data equivalence replay using the Sep-18 completed-bar dataset:
+  - baseline: HSIC 82.49, LAD 312.03, PNC 225.05, VZ 46.88;
+  - early preview: exactly the same four symbols and LIMIT prices.
+- Isolated preview test patched wait_until_order_transmission_time() and process_order_plan() to fail if reached; neither was called.
+- Canonical daily_scan_report.json, order_plan.json and automated_execution_report.json hashes remained unchanged by the isolated preview.
+- Live PAPER broker state was unchanged before/after preview validation.
+- Git diff proves automated_broker.py, automated_order_store.py, order_safety.py and strategy_scheduler.py are identical to main.
+- The normal trading_engine execution block is byte-identical to main.
+
+## Acceptance conclusion
+
+A new live order test is not required solely for this change because the broker execution path has not changed. Acceptance is based on proving:
+1. the early evaluation produces the same strategy result from the same completed bars;
+2. it cannot enter the broker execution path;
+3. the existing live broker path is unchanged;
+4. Telegram provides the requested advance disclosure.
 
 ## Friday 2026-09-18 instruction
-No implementation or operational scheduling changes today. Production continues with the current timing for Friday. Begin this work on Saturday 2026-09-19.
+
+No implementation or operational scheduling changes were made on Friday. Weekend work began Saturday 2026-09-19 as requested.

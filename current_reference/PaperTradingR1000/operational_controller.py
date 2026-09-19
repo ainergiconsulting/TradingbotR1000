@@ -22,11 +22,12 @@ from monitoring_core import write_bot_status
 from monitoring_io import atomic_write_json, utc_timestamp
 from runtime_processes import clear_pid, is_pid_running, process_info, read_pid, write_pid
 from runtime_health import HEALTH_OK, HEALTH_STOPPED, write_runtime_health
-from strategy_scheduler import is_cycle_due, record_cycle_result, runtime_summary
+from strategy_scheduler import is_cycle_due, is_market_session_day, record_cycle_result, runtime_summary
 from telegram_alerts import (
     alert_engine_failure,
     alert_market_data_refresh_failure,
     alert_market_data_refresh_warning,
+    alert_preopen_preview,
     alert_scan_completed,
     alert_universe_refresh_failure,
 )
@@ -112,6 +113,19 @@ def run_engine_once(net_liquidation_value: float | None = None) -> int:
     if net_liquidation_value is not None:
         command.extend(["--net-liquidation-value", str(net_liquidation_value)])
     log("controller launching engine", extra={"command": command})
+    completed = subprocess.run(command, cwd=str(cfg.PROJECT_ROOT), text=True)
+    return completed.returncode
+
+
+def run_preopen_preview_once(
+    net_liquidation_value: float | None = None,
+) -> int:
+    """Run the normal strategy scan early, but return before broker execution."""
+    engine = cfg.BASE_DIR / "trading_engine.py"
+    command = [sys.executable, str(engine), "--preview-only"]
+    if net_liquidation_value is not None:
+        command.extend(["--net-liquidation-value", str(net_liquidation_value)])
+    log("controller launching pre-open preview", extra={"command": command})
     completed = subprocess.run(command, cwd=str(cfg.PROJECT_ROOT), text=True)
     return completed.returncode
 
@@ -299,6 +313,39 @@ def run_daily_market_data_refresh(now: datetime | None = None, attempts: int = 3
     return False
 
 
+def _preopen_preview_due(now: datetime | None = None) -> bool:
+    """True once current-day daily bars are refreshed and today's preview is absent."""
+    now_et = (now or datetime.now(timezone.utc)).astimezone(NY_TZ)
+    if not is_market_session_day(now_et.date()):
+        return False
+
+    daily_state = _read_json_file(MARKET_DATA_DAILY_STATE_FILE)
+    if daily_state.get("attempt_date_et") != now_et.date().isoformat():
+        return False
+    if str(daily_state.get("status") or "").upper() not in {
+        "OK",
+        "DEGRADED_ACCEPTABLE",
+    }:
+        return False
+
+    preview = _read_json_file(cfg.PREOPEN_PREVIEW_REPORT_FILE)
+    if preview.get("preview_trade_date_et") != now_et.date().isoformat():
+        return True
+
+    expected_session = str(
+        daily_state.get("expected_latest_completed_session") or ""
+    )
+    preview_session = str(preview.get("market_data_latest_date") or "")
+    return bool(expected_session and preview_session != expected_session)
+
+
+def _handle_preopen_preview_success() -> None:
+    preview = _read_json_file(cfg.PREOPEN_PREVIEW_REPORT_FILE)
+    if not preview:
+        raise RuntimeError("preopen_preview_report_missing_after_success")
+    alert_preopen_preview(preview)
+
+
 def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None) -> int:
     if not is_authorized():
         write_controller_status("BLOCKED", reason="boot_not_authorized")
@@ -316,6 +363,44 @@ def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None)
             refresh_ok = run_daily_market_data_refresh()
             if not refresh_ok:
                 log("daily IBKR market-data refresh failed; trading remains fail-closed", level="ERROR")
+
+        if _preopen_preview_due():
+            write_controller_status(
+                "PREVIEW_RUNNING",
+                next_strategy_cycle=schedule["next_strategy_cycle_utc"],
+            )
+            write_runtime_bot_status("RUNNING", "preopen_preview_running")
+            preview_code = run_preopen_preview_once(
+                net_liquidation_value=net_liquidation_value,
+            )
+            if preview_code == 0:
+                _handle_preopen_preview_success()
+                write_controller_status(
+                    "PREVIEW_READY",
+                    next_strategy_cycle=schedule["next_strategy_cycle_utc"],
+                )
+                write_runtime_bot_status(
+                    "RUNNING",
+                    "preopen_preview_ready",
+                    next_strategy_cycle=schedule["next_strategy_cycle_utc"],
+                )
+            else:
+                write_controller_status(
+                    "PREVIEW_FAILED",
+                    preview_exit_code=preview_code,
+                    next_strategy_cycle=schedule["next_strategy_cycle_utc"],
+                )
+                write_runtime_bot_status(
+                    "RUNNING",
+                    "preopen_preview_failed",
+                    preview_exit_code=preview_code,
+                )
+                alert_engine_failure(
+                    f"Pre-open preview failed; exit code {preview_code}. "
+                    "Regular 09:28/09:30 strategy cycle remains unchanged.",
+                    extra={"phase": "preopen_preview", "exit_code": preview_code},
+                )
+
         if not is_cycle_due():
             write_controller_status("IDLE", restart_attempt=restarts, next_strategy_cycle=schedule["next_strategy_cycle_utc"])
             write_idle_runtime_health(schedule)

@@ -95,3 +95,16 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - No production behavior change today.
 - Added docs/WEEKEND_SCAN_DECOUPLING_PLAN_2026-09-19.md with the implementation, test and acceptance plan for separating post-refresh strategy PREPARE from 09:30 ET broker EXECUTE.
 - Work is scheduled to begin Saturday 2026-09-19 and finish before the US market reopens Monday 2026-09-21.
+
+
+## 2026-09-19 - Weekend scope corrected to minimal early order evaluation
+
+- The broad PREPARE/EXECUTE redesign was abandoned before promotion. The operator clarified that only the timing of order evaluation/disclosure should change; the proven 09:28 strategy cycle and 09:30 broker execution path should remain unchanged.
+- Added a read-only `--preview-only` strategy evaluation immediately after the successful 08:30 ET daily-bar refresh.
+- The preview writes `reports/preopen_preview_report.json` and sends Telegram details for all planned BUY/SELL orders, including planned quantity and LIMIT price where applicable, with `Broker submitted: 0`.
+- The regular 09:28 scan and the existing 09:30 broker-processing/reconciliation block are unchanged and remain authoritative if account state changes after the preview.
+- Git verification confirms `automated_broker.py`, `automated_order_store.py`, `order_safety.py` and `strategy_scheduler.py` are identical to main; the execution block in `trading_engine.py` is byte-identical to main.
+- Real-data Sep-18 equivalence replay: preview selected HSIC/LAD/PNC/VZ with the exact same 82.49/312.03/225.05/46.88 LIMIT prices as the accepted regular scan.
+- Isolated preview verification proved that `wait_until_order_transmission_time()` and `process_order_plan()` are not reached, canonical scan/order/execution report hashes are unchanged, and live PAPER broker state is unchanged.
+- Expanded operational/support suite passed 87/87; full discovery still reports only the same four pre-existing optional backtest/short-strategy setup/import errors.
+- Because the broker execution path is unchanged, no new live order acceptance is required solely for this feature.

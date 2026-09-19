@@ -160,3 +160,56 @@ def alert_order_status(order: dict[str, Any], status: str) -> None:
     if cancellation:
         lines.append(f"Reason: {cancellation}")
     write_alert(f"order_{normalized.lower()}", "\n".join(lines), extra=order)
+
+
+def alert_preopen_preview(scan: dict[str, Any]) -> None:
+    """Send the early, non-submitted order preview after daily-bar refresh."""
+    buy_plans = list(scan.get("order_plans") or [])
+    sell_plans = list(scan.get("sell_order_plans") or [])
+    lines = [
+        "R1000 PRE-OPEN PLAN READY.",
+        f"Signal session: {scan.get('market_data_latest_date', 'unknown')}",
+        f"Selected candidates: {len(scan.get('selected_candidates') or [])}",
+        f"Planned orders: {len(buy_plans) + len(sell_plans)}",
+        "Broker submitted: 0",
+    ]
+    if buy_plans or sell_plans:
+        lines.extend(["", "PLANNED FOR TODAY:"])
+    for row in sell_plans + buy_plans:
+        side = str(row.get("side") or ("SELL" if row in sell_plans else "BUY")).upper()
+        symbol = str(row.get("symbol") or "?").upper()
+        order_type = str(
+            row.get("order_type")
+            or ("MARKET" if side == "SELL" else "LIMIT")
+        ).upper()
+        detail = f"- {side} {symbol}"
+        allocation = float(row.get("allocation_value") or 0.0)
+        limit_price = float(row.get("limit_price") or 0.0)
+        if side == "BUY":
+            planned_qty = (
+                int(allocation // limit_price)
+                if allocation > 0 and limit_price > 0
+                else 0
+            )
+            detail += f" | planned qty {planned_qty}"
+        elif row.get("quantity") not in (None, ""):
+            detail += f" | qty {row.get('quantity')}"
+        detail += f" | {order_type}"
+        if order_type == "LIMIT" and limit_price > 0:
+            detail += f" @ ${limit_price:,.2f}"
+        lines.append(detail)
+    lines.extend([
+        "",
+        f"Regular execution remains scheduled at {cfg.ORDER_TRANSMISSION_TIME_ET} ET.",
+        "This is an advance disclosure; no broker order has been sent.",
+    ])
+    write_alert(
+        "preopen_preview",
+        "\n".join(lines),
+        extra={
+            "preview_trade_date_et": scan.get("preview_trade_date_et"),
+            "selected_candidates": scan.get("selected_candidates") or [],
+            "order_plans": buy_plans,
+            "sell_order_plans": sell_plans,
+        },
+    )

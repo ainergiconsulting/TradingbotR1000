@@ -66,19 +66,19 @@ The active architecture reuses the Tradingbot2607 operational pattern: a backgro
 
 Main runtime process:
 
-`C:\TradingbotR1000\current_reference\PaperTradingR1000\operational_controller.py`
+`/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000/operational_controller.py`
 
 Strategy entry point used by the controller:
 
-`C:\TradingbotR1000\current_reference\PaperTradingR1000\trading_engine.py --scan-once`
+Regular execution: `/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000/trading_engine.py --scan-once`; early disclosure: the same engine with `--preview-only`.
 
 Scheduling component:
 
-`C:\TradingbotR1000\current_reference\PaperTradingR1000\strategy_scheduler.py`
+`/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000/strategy_scheduler.py`
 
 Default strategy cycle:
 
-`09:35 America/New_York`, one eligible US trading session at most once per day.
+Regular strategy cycle remains `09:28 America/New_York`, one eligible US trading session at most once per day, with broker transmission no earlier than `09:30`. After the successful `08:30 ET` daily-bar refresh, an additional read-only `--preview-only` evaluation publishes the planned order details; it does not alter scheduler state or enter broker order processing.
 
 IBKR Paper Trading configuration:
 
@@ -117,7 +117,8 @@ Report directory:
 
 Key report files:
 
-- `scan_report.json`
+- `daily_scan_report.json`
+- `preopen_preview_report.json`
 - `order_plan.json`
 - `reconciliation_report.json`
 - `automated_execution_report.json`

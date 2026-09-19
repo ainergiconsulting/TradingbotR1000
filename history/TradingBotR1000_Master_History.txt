@@ -922,3 +922,27 @@ The daily IBKR bar refresh currently runs at 08:30 ET and supplies the prior com
 Operator decision: do not change the production bot on Friday. The scan/execution decoupling work is scheduled for the weekend, starting Saturday 2026-09-19 and to be completed before the US market reopens Monday 2026-09-21. Detailed plan recorded in docs/WEEKEND_SCAN_DECOUPLING_PLAN_2026-09-19.md.
 
 Planned architecture remains: 08:30 ET IBKR daily-bar refresh; immediately after successful refresh generate and persist a PREPARED strategy plan and send detailed Telegram candidate information; at 09:30 ET independently refresh/revalidate live broker state, capital, positions, open orders, duplicate/slot/long-only safety and finalize quantities before transmission. Strategy rules and DAY order policy remain unchanged. Separate PREPARE/EXECUTE states, watchdogs, restart/idempotency protections, late-execution fail-closed behavior, failure-injection tests, strategy-equivalence tests, isolated no-transmission E2E, controlled PAPER acceptance, and next-day rollover validation are required before completion. Estimated controlled engineering/testing effort: approximately 5-7 hours plus real PAPER-session validation. No production code, service timing, scheduler or trading behavior is to be changed on Friday as part of this decision.
+
+
+[2026-09-19] WEEKEND SCOPE CORRECTION - EARLY ORDER EVALUATION ONLY
+Operator clarified that the requested weekend change was narrower than the initial PREPARE/EXECUTE redesign: because strategy signals depend on prior-session completed bars, planned orders should be evaluated and disclosed as soon as the 08:30 ET data refresh completes; all existing 09:28/09:30 execution behavior should remain unchanged. The over-broad weekend refactor was therefore abandoned and not promoted.
+
+A new minimal branch was created directly from main. The implementation adds only an early read-only `--preview-only` path. After a successful same-day daily-bar refresh, the controller runs the normal strategy evaluation early, persists `reports/preopen_preview_report.json`, and emits Telegram details for the planned BUY/SELL orders. The preview reports selected candidates, planned quantity, order type, LIMIT price where applicable, and explicitly states Broker submitted=0. It returns before the normal 09:30 wait and before `process_order_plan()`. The existing regular strategy cycle remains at 09:28 ET and broker transmission remains no earlier than 09:30 ET.
+
+The early planned quantity is informational and is calculated from the early account snapshot. If account/position state changes before the regular cycle, the 09:28 regular scan remains authoritative, exactly as before.
+
+Verification:
+- automated_broker.py unchanged vs main.
+- automated_order_store.py unchanged vs main.
+- order_safety.py unchanged vs main.
+- strategy_scheduler.py unchanged vs main.
+- trading_engine.py execution block from the existing `if cfg.EXECUTE_ORDERS` 09:30 wait through broker processing, reconciliation and return is byte-identical to main.
+- Real Sep-18 data equivalence: baseline and early preview both selected HSIC, LAD, PNC and VZ with LIMIT prices 82.49, 312.03, 225.05 and 46.88.
+- Isolated preview patched both `wait_until_order_transmission_time()` and `process_order_plan()` to fail if reached; neither was called.
+- Canonical daily_scan_report.json, order_plan.json and automated_execution_report.json hashes did not change during preview validation.
+- Live PAPER broker positions/open-orders state was unchanged before/after the preview test.
+- Focused preview/controller/Telegram tests pass.
+- Expanded operational/support suite: 87/87 PASS.
+- Full discovery retains only the same four previously known optional/missing backtest/short-strategy errors; no new operational/runtime failure.
+
+Acceptance conclusion: no new live order test is required solely for this change because the live broker execution path is unchanged. The acceptance requirement is to prove early strategy equivalence, no broker-path entry during preview, unchanged execution code, and correct advance Telegram disclosure; all were satisfied.

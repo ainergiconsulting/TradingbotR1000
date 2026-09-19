@@ -75,12 +75,83 @@ class TelegramMonitoringTests(unittest.TestCase):
                 return real_datetime.fromisoformat(value)
         with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "datetime", FakeDateTime):
             text = telegram_commands.render_status()
-        self.assertIn("Today's scan: PENDING", text)
+        self.assertIn("Pre-open plan: PENDING", text)
         self.assertIn("Selected today: N/A (not evaluated yet)", text)
-        self.assertIn("Orders currently valid: 0", text)
+        self.assertIn("Planned orders: 0", text)
         self.assertNotIn("BUY BNY", text)
         self.assertNotIn("STALE / NOT CURRENT", text)
         self.assertNotIn("PLANNED / CURRENTLY VALID:", text)
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TelegramPreviewMonitoringTests(unittest.TestCase):
+    def test_status_shows_current_preopen_preview_details(self):
+        fake_status = {
+            "runtime_health": {"strategy_engine_state": "IDLE"},
+            "scan_report": {
+                "timestamp_utc": "2026-09-18T13:28:53Z",
+                "selected_candidates": [],
+                "order_plans": [],
+                "sell_order_plans": [],
+            },
+        }
+        fake_preview = {
+            "preview_trade_date_et": "2026-09-21",
+            "preview_created_at_utc": "2026-09-21T12:45:10Z",
+            "market_data_latest_date": "20260918",
+            "selected_candidates": [{"symbol": "AAA"}, {"symbol": "BBB"}],
+            "order_plans": [
+                {
+                    "symbol": "AAA",
+                    "side": "BUY",
+                    "order_type": "LIMIT",
+                    "allocation_value": 9700.0,
+                    "limit_price": 97.0,
+                },
+                {
+                    "symbol": "BBB",
+                    "side": "BUY",
+                    "order_type": "LIMIT",
+                    "allocation_value": 4850.0,
+                    "limit_price": 48.5,
+                },
+            ],
+            "sell_order_plans": [],
+        }
+        fake_snapshot = {
+            "account_values": {
+                "net_liquidation": 1000000,
+                "cash": 900000,
+                "available_funds": 900000,
+                "buying_power": 3600000,
+                "lookahead_available_funds": 900000,
+            },
+            "positions": [],
+            "open_orders": [],
+            "account_mode": "PAPER",
+        }
+
+        class FakeDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                from datetime import datetime as real_datetime, timezone
+                return real_datetime(2026, 9, 21, 12, 50, tzinfo=timezone.utc)
+
+            @classmethod
+            def fromisoformat(cls, value):
+                from datetime import datetime as real_datetime
+                return real_datetime.fromisoformat(value)
+
+        with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "read_json", return_value=fake_preview),              patch.object(telegram_commands, "datetime", FakeDateTime):
+            text = telegram_commands.render_status()
+
+        self.assertIn("Pre-open plan: READY", text)
+        self.assertIn("Signal session: 20260918", text)
+        self.assertIn("Selected today: 2", text)
+        self.assertIn("Planned orders: 2", text)
+        self.assertIn("Broker submitted: 0", text)
+        self.assertIn("BUY AAA | qty 100 | LIMIT @ $97.00", text)
+        self.assertIn("BUY BBB | qty 100 | LIMIT @ $48.50", text)
+        self.assertIn("PLANNED / NOT YET SUBMITTED:", text)

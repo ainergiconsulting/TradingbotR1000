@@ -231,7 +231,7 @@ def load_daily_bar_data(symbols: Iterable[str], daily_bars_dir: Path) -> dict[st
 
 
 def expected_latest_completed_weekday(now_utc: datetime | None = None) -> str:
-    """Return the strict prior weekday expected at the 09:28 ET scan.
+    """Return the strict prior weekday expected for the pre-open evaluations.
 
     This is deliberately fail-closed. A market holiday on the immediately
     preceding weekday will require fresh-data confirmation rather than allowing
@@ -420,7 +420,12 @@ def wait_until_order_transmission_time() -> None:
         time.sleep(min(1.0, max(0.05, remaining)))
 
 
-def run_scan_once(*, net_liquidation_value: float | None = None, require_universe_file: bool = True) -> dict[str, Any]:
+def run_scan_once(
+    *,
+    net_liquidation_value: float | None = None,
+    require_universe_file: bool = True,
+    preview_only: bool = False,
+) -> dict[str, Any]:
     cfg.ensure_runtime_dirs()
     cycle_started_at = utc_timestamp()
     write_runtime_health(
@@ -430,7 +435,10 @@ def run_scan_once(*, net_liquidation_value: float | None = None, require_univers
         last_strategy_cycle_time_utc=cycle_started_at,
     )
     snapshot = ensure_runtime_ready(require_universe_file=require_universe_file)
-    broker_context = collect_live_account_context(client_id=cfg.CLIENT_ID, readonly=not cfg.EXECUTE_ORDERS)
+    broker_context = collect_live_account_context(
+        client_id=cfg.CLIENT_ID,
+        readonly=True if preview_only else not cfg.EXECUTE_ORDERS,
+    )
     live_values = broker_context["account_values"]
     if net_liquidation_value is None:
         net_liquidation_value = float(live_values["net_liquidation"])
@@ -566,6 +574,43 @@ def run_scan_once(*, net_liquidation_value: float | None = None, require_univers
         signal["signal_date"] = market_data["signal_dates"].get(signal["symbol"], "")
     scan["sell_order_plans"] = build_sell_order_plans(scan["exit_signals"], state.get("active_positions") or {})
 
+    if preview_only:
+        now_et = datetime.now(timezone.utc).astimezone(ORDER_TRANSMISSION_TZ)
+        scan["preview_only"] = True
+        scan["preview_trade_date_et"] = now_et.date().isoformat()
+        scan["preview_created_at_utc"] = utc_timestamp()
+        scan["broker_orders_transmitted"] = 0
+        atomic_write_json(cfg.PREOPEN_PREVIEW_REPORT_FILE, scan)
+        write_heartbeat(
+            event="preopen_preview_completed",
+            selected=len(scan["selected_candidates"]),
+        )
+        write_runtime_health(
+            strategy_engine_state=HEALTH_OK,
+            order_engine_state="WAITING_FOR_REGULAR_CYCLE",
+            startup_reconciliation_state="not_checked",
+            trading_state="PREVIEW_READY",
+            message="pre-open order preview completed; no broker order transmitted",
+            last_strategy_cycle_status="PREVIEW_READY",
+            last_strategy_cycle_time_utc=scan["preview_created_at_utc"],
+            extra={
+                "preview_trade_date_et": scan["preview_trade_date_et"],
+                "selected": len(scan["selected_candidates"]),
+                "planned_buy_orders": len(scan.get("order_plans") or []),
+                "planned_sell_orders": len(scan.get("sell_order_plans") or []),
+                "broker_orders_transmitted": 0,
+            },
+        )
+        log(
+            "pre-open preview completed",
+            extra={
+                "selected": len(scan["selected_candidates"]),
+                "buy_orders": len(scan.get("order_plans") or []),
+                "sell_orders": len(scan.get("sell_order_plans") or []),
+            },
+        )
+        return scan
+
     if cfg.EXECUTE_ORDERS:
         wait_until_order_transmission_time()
         broker_context = collect_live_account_context(
@@ -666,6 +711,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="TradingbotR1000 daily scan/order-plan engine")
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--scan-once", action="store_true")
+    parser.add_argument("--preview-only", action="store_true")
     parser.add_argument("--net-liquidation-value", "--capital", dest="net_liquidation_value", type=float)
     args = parser.parse_args(argv)
 
@@ -678,7 +724,11 @@ def main(argv: list[str] | None = None) -> int:
             write_runtime_health(strategy_engine_state=HEALTH_OK, message="stop requested before scan")
             return 0
         net_liquidation_value = args.net_liquidation_value
-        scan = run_scan_once(net_liquidation_value=net_liquidation_value, require_universe_file=True)
+        scan = run_scan_once(
+            net_liquidation_value=net_liquidation_value,
+            require_universe_file=True,
+            preview_only=args.preview_only,
+        )
         print(json.dumps({"selected": len(scan["selected_candidates"]), "orders": len(scan["order_plans"])}, indent=2))
         return 0
     except (AutomatedBrokerError, ConfigError, EngineInputError, LiveAccountError, OSError, ValueError) as exc:

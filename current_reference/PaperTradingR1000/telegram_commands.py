@@ -53,12 +53,20 @@ def render_status() -> str:
     ).date().isoformat()
     scan_is_current = bool(scan_date_et and scan_date_et == today_et)
 
-    valid_plans = list(buy_plans) if scan_is_current else []
-    stale_buy_plans = [] if scan_is_current else list(buy_plans)
+    preview = read_json(cfg.PREOPEN_PREVIEW_REPORT_FILE)
+    preview_is_current = (
+        str(preview.get("preview_trade_date_et") or "") == today_et
+    )
+    if not scan_is_current and preview_is_current:
+        buy_plans = list(preview.get("order_plans", []) or [])
+        sell_plans = list(preview.get("sell_order_plans", []) or [])
+
+    valid_plans = list(buy_plans) if (scan_is_current or preview_is_current) else []
+    stale_buy_plans = [] if (scan_is_current or preview_is_current) else list(buy_plans)
     stale_sell_plans = []
     for row in sell_plans:
         symbol = str(row.get("symbol") or "").upper()
-        if scan_is_current and live_positions.get(symbol, 0.0) > 0:
+        if (scan_is_current or preview_is_current) and live_positions.get(symbol, 0.0) > 0:
             valid_plans.append(row)
         else:
             stale_sell_plans.append(row)
@@ -73,15 +81,27 @@ def render_status() -> str:
             f"Selected today: {len(scan.get('selected_candidates', []))}",
             f"Orders currently valid: {len(valid_plans)}",
         ])
+    elif preview_is_current:
+        lines.extend([
+            f"Pre-open plan: READY at {preview.get('preview_created_at_utc', 'unknown')}",
+            f"Signal session: {preview.get('market_data_latest_date', 'unknown')}",
+            f"Selected today: {len(preview.get('selected_candidates', []))}",
+            f"Planned orders: {len(valid_plans)}",
+            "Broker submitted: 0",
+            f"Regular execution remains scheduled at {cfg.STRATEGY_CYCLE_TIME_ET} ET / transmission {cfg.ORDER_TRANSMISSION_TIME_ET} ET",
+        ])
     else:
         lines.extend([
-            f"Today's scan: PENDING (scheduled {cfg.STRATEGY_CYCLE_TIME_ET} ET)",
+            "Pre-open plan: PENDING (after successful 08:30 ET data refresh)",
             f"Last completed scan: {scan.get('timestamp_utc', 'none')}",
             "Selected today: N/A (not evaluated yet)",
-            "Orders currently valid: 0",
+            "Planned orders: 0",
         ])
     if valid_plans:
-        lines.extend(["", "PLANNED / CURRENTLY VALID:"])
+        lines.extend([
+            "",
+            "PLANNED / CURRENTLY VALID:" if scan_is_current else "PLANNED / NOT YET SUBMITTED:",
+        ])
         for row in valid_plans:
             is_sell = row in sell_plans
             side = str(row.get("side") or row.get("action") or ("SELL" if is_sell else "BUY")).upper()
