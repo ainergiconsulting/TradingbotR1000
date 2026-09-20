@@ -117,3 +117,11 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Telegram and health-supervisor services were restarted after promotion so they are running code from current `main`.
 - No broker order was transmitted during implementation or verification.
 - The trading controller remains inactive and systemd-disabled from the acceptance hold. SentinelX policy currently permits status/restart but not a direct `start` action for this service; that restriction was not bypassed.
+
+## 2026-09-20 - Controller restored after weekend acceptance hold
+- Corrected stale scheduler metadata: last_cycle_date now matches the actual completed Sep-18 cycle evidence.
+- Re-enabled and started tradingbot-controller.service.
+- Verified desired_running=true, fresh heartbeat, controller IDLE, next regular cycle Monday 2026-09-21 09:28 ET.
+- Health supervisor returned OK; IBKR Live API/socket/Gateway are connected/running with zero consecutive API failures.
+- PAPER account verification: zero open orders, ABNB 1176 position.
+- No broker order was transmitted during restoration.

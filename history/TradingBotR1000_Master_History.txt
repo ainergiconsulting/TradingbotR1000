@@ -952,3 +952,26 @@ Acceptance conclusion: no new live order test is required solely for this change
 The corrected minimal implementation was promoted by fast-forward to main at b57a1c0 and pushed to GitHub; local main and origin/main match. The obsolete over-broad weekend-scan-decoupling branch and the temporary minimal acceptance branch were removed locally and remotely, leaving only main. Telegram and health-supervisor services were restarted so their running processes use current main code. No broker order was transmitted during this work.
 
 Controller process state remains inactive and its systemd unit remains disabled from the weekend acceptance hold. SentinelX host policy allows status/restart for tradingbot-controller.service but does not allow a direct start action. The denied start permission was not bypassed or expanded. Code/readiness verification is complete; controller activation is a separate operational action.
+
+[2026-09-20] CONTROLLER FULL OPERATIONAL RESTORE
+Weekend acceptance hold removed after minimal early-preview implementation was verified and promoted to main. Before restart, strategy_scheduler_state.json contained an inconsistent last_cycle_date=2026-09-19 while last_cycle_id/time correctly pointed to the completed 2026-09-18 cycle. The scheduler date was corrected to 2026-09-18 after making a backup of the state file.
+
+tradingbot-controller.service was re-enabled in systemd and started. Post-restore verification:
+- controller active/running and enabled
+- desired_running=true
+- controller status IDLE
+- fresh controller heartbeat
+- next regular strategy cycle 2026-09-21T13:28:00Z (09:28 ET)
+- health supervisor status OK
+- IBKR Live API CONNECTED
+- Gateway process RUNNING
+- API socket CONNECTED
+- consecutive API failures 0
+- PAPER account
+- broker open orders 0
+- current position ABNB 1176
+- NLV approximately 1,032,495.26
+- AvailableFunds approximately 966,934.49
+No broker order was transmitted as part of the restore.
+
+Expected Monday lifecycle remains: 08:30 ET daily-bar refresh -> immediate read-only early order preview and Telegram disclosure -> unchanged 09:28 regular strategy cycle -> unchanged 09:30 broker transmission path.
