@@ -96,9 +96,10 @@ def _latest_completed_ibkr_date(ib: Any) -> str:
     if not bars:
         raise RuntimeError("reference_market_data_unavailable")
     # Before the regular close, today's daily bar is incomplete and must not be
-    # used. After 16:15 ET, today's completed bar is eligible. On the normal
-    # 09:28 ET strategy run this therefore resolves to the previous completed
-    # IBKR session, including holiday/weekend handling from IBKR itself.
+    # used. After 16:15 ET, today's completed bar is eligible. The operational
+    # controller starts the post-close refresh at 16:30 ET and independently
+    # requires the returned session date to match the just-completed session
+    # before publishing the next-session plan.
     from zoneinfo import ZoneInfo
     now_et = datetime.now(timezone.utc).astimezone(ZoneInfo("America/New_York"))
     today_et = now_et.strftime("%Y%m%d")

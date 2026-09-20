@@ -75,7 +75,7 @@ class TelegramMonitoringTests(unittest.TestCase):
                 return real_datetime.fromisoformat(value)
         with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "datetime", FakeDateTime):
             text = telegram_commands.render_status()
-        self.assertIn("Pre-open plan: PENDING", text)
+        self.assertIn("Next-session plan: PENDING", text)
         self.assertIn("Selected today: N/A (not evaluated yet)", text)
         self.assertIn("Planned orders: 0", text)
         self.assertNotIn("BUY BNY", text)
@@ -147,7 +147,8 @@ class TelegramPreviewMonitoringTests(unittest.TestCase):
         with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "read_json", return_value=fake_preview),              patch.object(telegram_commands, "datetime", FakeDateTime):
             text = telegram_commands.render_status()
 
-        self.assertIn("Pre-open plan: READY", text)
+        self.assertIn("Next-session plan: READY", text)
+        self.assertIn("For session ET: 2026-09-21", text)
         self.assertIn("Signal session: 20260918", text)
         self.assertIn("Selected today: 2", text)
         self.assertIn("Planned orders: 2", text)

@@ -78,7 +78,7 @@ Scheduling component:
 
 Default strategy cycle:
 
-Regular strategy cycle remains `09:28 America/New_York`, one eligible US trading session at most once per day, with broker transmission no earlier than `09:30`. After the successful `08:30 ET` daily-bar refresh, an additional read-only `--preview-only` evaluation publishes the planned order details; it does not alter scheduler state or enter broker order processing.
+Regular strategy cycle remains `09:28 America/New_York`, one eligible US trading session at most once per day, with broker transmission no earlier than `09:30`. The daily-bar refresh now starts at `16:30 ET` after the regular close. The controller accepts it only when IBKR confirms the just-completed session date; if that session is not yet available it retries after five minutes. A successful post-close refresh immediately triggers a read-only `--preview-only` evaluation for the next eligible session; it does not alter scheduler state or enter broker order processing.
 
 IBKR Paper Trading configuration:
 

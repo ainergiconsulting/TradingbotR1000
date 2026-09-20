@@ -17,13 +17,13 @@ import trading_engine
 
 class PreopenPreviewScheduleTests(unittest.TestCase):
     def test_preview_due_after_successful_same_day_refresh(self):
-        now = datetime(2026, 9, 21, 12, 50, tzinfo=timezone.utc)  # Monday 08:50 ET
+        now = datetime(2026, 9, 18, 20, 35, tzinfo=timezone.utc)  # Friday 16:35 ET
         with TemporaryDirectory() as tmp:
             state = Path(tmp)
             daily = state / "daily.json"
             preview = state / "preview.json"
             daily.write_text(json.dumps({
-                "attempt_date_et": "2026-09-21",
+                "attempt_date_et": "2026-09-18",
                 "status": "OK",
                 "expected_latest_completed_session": "20260918",
             }))
@@ -49,13 +49,13 @@ class PreopenPreviewScheduleTests(unittest.TestCase):
                 self.assertFalse(operational_controller._preopen_preview_due(saturday))
 
     def test_matching_preview_is_not_repeated(self):
-        now = datetime(2026, 9, 21, 12, 50, tzinfo=timezone.utc)
+        now = datetime(2026, 9, 18, 20, 35, tzinfo=timezone.utc)
         with TemporaryDirectory() as tmp:
             state = Path(tmp)
             daily = state / "daily.json"
             preview = state / "preview.json"
             daily.write_text(json.dumps({
-                "attempt_date_et": "2026-09-21",
+                "attempt_date_et": "2026-09-18",
                 "status": "OK",
                 "expected_latest_completed_session": "20260918",
             }))
@@ -68,13 +68,13 @@ class PreopenPreviewScheduleTests(unittest.TestCase):
                 self.assertFalse(operational_controller._preopen_preview_due(now))
 
     def test_preview_is_repeated_if_session_evidence_mismatches(self):
-        now = datetime(2026, 9, 21, 12, 50, tzinfo=timezone.utc)
+        now = datetime(2026, 9, 18, 20, 35, tzinfo=timezone.utc)
         with TemporaryDirectory() as tmp:
             state = Path(tmp)
             daily = state / "daily.json"
             preview = state / "preview.json"
             daily.write_text(json.dumps({
-                "attempt_date_et": "2026-09-21",
+                "attempt_date_et": "2026-09-18",
                 "status": "OK",
                 "expected_latest_completed_session": "20260918",
             }))
@@ -89,16 +89,74 @@ class PreopenPreviewScheduleTests(unittest.TestCase):
     def test_preview_command_is_separate_from_regular_scan_command(self):
         completed = type("Done", (), {"returncode": 0})()
         with patch.object(operational_controller.subprocess, "run", return_value=completed) as run:
-            rc = operational_controller.run_preopen_preview_once()
+            rc = operational_controller.run_preopen_preview_once(preview_for_session_et="2026-09-21")
         self.assertEqual(rc, 0)
         command = run.call_args.args[0]
         self.assertIn("--preview-only", command)
+        self.assertIn("--preview-for-session-et", command)
+        self.assertIn("2026-09-21", command)
         self.assertNotIn("--scan-once", command)
 
 
 if __name__ == "__main__":
     unittest.main()
 
+
+
+
+class PostCloseRefreshScheduleTests(unittest.TestCase):
+    def test_refresh_not_due_before_1630_et(self):
+        now = datetime(2026, 9, 18, 20, 29, tzinfo=timezone.utc)  # 16:29 ET
+        with TemporaryDirectory() as tmp:
+            state = Path(tmp) / "daily.json"
+            with patch.object(operational_controller, "MARKET_DATA_DAILY_STATE_FILE", state):
+                self.assertFalse(operational_controller._market_data_refresh_due(now))
+
+    def test_refresh_due_at_1630_et_when_current_session_missing(self):
+        now = datetime(2026, 9, 18, 20, 30, tzinfo=timezone.utc)
+        with TemporaryDirectory() as tmp:
+            state = Path(tmp) / "daily.json"
+            state.write_text(json.dumps({
+                "attempt_date_et": "2026-09-18",
+                "status": "OK",
+                "expected_latest_completed_session": "20260917",
+                "completed_at_utc": "2026-09-18T20:20:00Z",
+            }))
+            with patch.object(operational_controller, "MARKET_DATA_DAILY_STATE_FILE", state):
+                self.assertTrue(operational_controller._market_data_refresh_due(now))
+
+    def test_refresh_waits_five_minutes_before_retry_when_bar_not_ready(self):
+        now = datetime(2026, 9, 18, 20, 33, tzinfo=timezone.utc)
+        with TemporaryDirectory() as tmp:
+            state = Path(tmp) / "daily.json"
+            state.write_text(json.dumps({
+                "attempt_date_et": "2026-09-18",
+                "status": "OK",
+                "expected_latest_completed_session": "20260917",
+                "completed_at_utc": "2026-09-18T20:31:00Z",
+            }))
+            with patch.object(operational_controller, "MARKET_DATA_DAILY_STATE_FILE", state):
+                self.assertFalse(operational_controller._market_data_refresh_due(now))
+
+    def test_refresh_not_due_after_current_session_confirmed(self):
+        now = datetime(2026, 9, 18, 21, 0, tzinfo=timezone.utc)
+        with TemporaryDirectory() as tmp:
+            state = Path(tmp) / "daily.json"
+            state.write_text(json.dumps({
+                "attempt_date_et": "2026-09-18",
+                "status": "OK",
+                "expected_latest_completed_session": "20260918",
+                "completed_at_utc": "2026-09-18T20:45:00Z",
+            }))
+            with patch.object(operational_controller, "MARKET_DATA_DAILY_STATE_FILE", state):
+                self.assertFalse(operational_controller._market_data_refresh_due(now))
+
+    def test_next_market_session_after_friday_is_monday(self):
+        from datetime import date
+        self.assertEqual(
+            operational_controller._next_market_session_date(date(2026, 9, 18)),
+            "2026-09-21",
+        )
 
 class PreopenPreviewControllerFlowTests(unittest.TestCase):
     def _stop_after_first_loop(self):

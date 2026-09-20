@@ -10,15 +10,16 @@ The original weekend draft proposed a broader PREPARE/EXECUTE redesign. During i
 
 1. Strategy inputs are completed daily bars from the prior completed US session.
 2. Therefore candidate/order evaluation does not need to wait until 09:28 ET.
-3. As soon as the 08:30 ET daily-bar refresh completes successfully, the bot should evaluate the planned orders and disclose their details on Telegram.
+3. The refresh should occur after the market close, not the following morning; at 16:30 ET the bot starts checking for the just-completed daily bar, retries every five minutes if IBKR has not published it yet, and evaluates/discloses the next-session orders immediately once confirmed.
 4. The existing 09:28 strategy cycle and 09:30 broker transmission behavior should otherwise remain unchanged.
 
 The broader execution-path refactor was therefore abandoned and was not promoted to production.
 
 ## Implemented minimal flow
 
-08:30 ET daily-bar refresh
--> immediately after successful same-day refresh: early read-only order-plan evaluation
+16:30 ET post-close daily-bar refresh (first attempt)
+-> verify IBKR reports the just-completed session; if not, retry every 5 minutes
+-> immediately after confirmed refresh: early read-only order-plan evaluation for the next eligible session
 -> persist reports/preopen_preview_report.json
 -> Telegram sends planned symbols, BUY/SELL side, planned quantity, order type and LIMIT price where applicable
 -> no broker order is sent

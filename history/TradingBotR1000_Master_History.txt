@@ -975,3 +975,11 @@ tradingbot-controller.service was re-enabled in systemd and started. Post-restor
 No broker order was transmitted as part of the restore.
 
 Expected Monday lifecycle remains: 08:30 ET daily-bar refresh -> immediate read-only early order preview and Telegram disclosure -> unchanged 09:28 regular strategy cycle -> unchanged 09:30 broker transmission path.
+
+
+[2026-09-20] POST-CLOSE REFRESH TIMING DECISION
+Reviewed IBKR historical daily-bar behavior and the bot refresher. The API requests 1-day TRADES bars with useRTH=True. IBKR documentation does not publish a guaranteed exact stock daily-bar availability minute after the close; therefore correctness must be verified by the returned session date rather than by a fixed delay alone. The bot already treated today's daily bar as potentially eligible after 16:15 ET.
+
+Operational decision: first automatic refresh attempt at 16:30 ET, i.e. 30 minutes after the regular 16:00 ET close. This provides a conservative buffer while still producing the next-session plan shortly after the close. The controller now requires the refreshed expected_latest_completed_session to equal the just-completed ET session date before a preview is accepted. If IBKR still reports the previous session, the controller waits five minutes and retries. Thus 16:30 is the first-attempt time, not an unconditional correctness assumption.
+
+Once the current session is confirmed, the bot immediately performs the existing read-only preview evaluation and Telegram disclosure for the next eligible US session. Example: Friday close -> refresh beginning 16:30 ET -> Friday bars confirmed -> plan labeled for Monday. The normal 09:28 strategy cycle and 09:30 broker path remain unchanged.

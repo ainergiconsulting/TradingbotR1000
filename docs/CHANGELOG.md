@@ -125,3 +125,12 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Health supervisor returned OK; IBKR Live API/socket/Gateway are connected/running with zero consecutive API failures.
 - PAPER account verification: zero open orders, ABNB 1176 position.
 - No broker order was transmitted during restoration.
+
+
+## 2026-09-20 - Daily-bar refresh moved post-close
+- Evaluated IBKR daily-bar availability and moved the first automatic refresh attempt from 08:30 ET to 16:30 ET, 30 minutes after the regular US close.
+- Correctness is no longer assumed from the clock alone: the controller requires expected_latest_completed_session to equal the just-completed ET session date before publishing a preview.
+- If IBKR still reports the prior session at 16:30, the controller waits five minutes and retries. Once the current session is confirmed, the next-session preview is generated immediately.
+- Friday post-close previews are labeled for the next eligible session (normally Monday); weekends/holidays are skipped by the session calendar.
+- The regular 09:28 strategy cycle and 09:30 broker execution path remain unchanged.
+- Focused post-close/preview/Telegram tests passed; expanded operational/support suite passed 92/92.

@@ -425,6 +425,7 @@ def run_scan_once(
     net_liquidation_value: float | None = None,
     require_universe_file: bool = True,
     preview_only: bool = False,
+    preview_for_session_et: str | None = None,
 ) -> dict[str, Any]:
     cfg.ensure_runtime_dirs()
     cycle_started_at = utc_timestamp()
@@ -577,7 +578,9 @@ def run_scan_once(
     if preview_only:
         now_et = datetime.now(timezone.utc).astimezone(ORDER_TRANSMISSION_TZ)
         scan["preview_only"] = True
-        scan["preview_trade_date_et"] = now_et.date().isoformat()
+        scan["preview_trade_date_et"] = (
+            preview_for_session_et or now_et.date().isoformat()
+        )
         scan["preview_created_at_utc"] = utc_timestamp()
         scan["broker_orders_transmitted"] = 0
         atomic_write_json(cfg.PREOPEN_PREVIEW_REPORT_FILE, scan)
@@ -712,6 +715,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--scan-once", action="store_true")
     parser.add_argument("--preview-only", action="store_true")
+    parser.add_argument("--preview-for-session-et")
     parser.add_argument("--net-liquidation-value", "--capital", dest="net_liquidation_value", type=float)
     args = parser.parse_args(argv)
 
@@ -728,6 +732,7 @@ def main(argv: list[str] | None = None) -> int:
             net_liquidation_value=net_liquidation_value,
             require_universe_file=True,
             preview_only=args.preview_only,
+            preview_for_session_et=args.preview_for_session_et,
         )
         print(json.dumps({"selected": len(scan["selected_candidates"]), "orders": len(scan["order_plans"])}, indent=2))
         return 0

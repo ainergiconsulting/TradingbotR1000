@@ -56,7 +56,8 @@ class TelegramPreviewAlertsTests(unittest.TestCase):
         write.assert_called_once()
         event, message = write.call_args.args[:2]
         self.assertEqual(event, "preopen_preview")
-        self.assertIn("R1000 PRE-OPEN PLAN READY.", message)
+        self.assertIn("R1000 NEXT-SESSION PLAN READY.", message)
+        self.assertIn("For session ET: 2026-09-21", message)
         self.assertIn("Selected candidates: 1", message)
         self.assertIn("Broker submitted: 0", message)
         self.assertIn("BUY AAA | planned qty 100 | LIMIT @ $97.00", message)

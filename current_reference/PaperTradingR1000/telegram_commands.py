@@ -54,8 +54,10 @@ def render_status() -> str:
     scan_is_current = bool(scan_date_et and scan_date_et == today_et)
 
     preview = read_json(cfg.PREOPEN_PREVIEW_REPORT_FILE)
-    preview_is_current = (
-        str(preview.get("preview_trade_date_et") or "") == today_et
+    preview_target_et = str(preview.get("preview_trade_date_et") or "")
+    preview_is_current = bool(
+        preview_target_et
+        and preview_target_et >= today_et
     )
     if not scan_is_current and preview_is_current:
         buy_plans = list(preview.get("order_plans", []) or [])
@@ -83,7 +85,8 @@ def render_status() -> str:
         ])
     elif preview_is_current:
         lines.extend([
-            f"Pre-open plan: READY at {preview.get('preview_created_at_utc', 'unknown')}",
+            f"Next-session plan: READY at {preview.get('preview_created_at_utc', 'unknown')}",
+            f"For session ET: {preview.get('preview_trade_date_et', 'unknown')}",
             f"Signal session: {preview.get('market_data_latest_date', 'unknown')}",
             f"Selected today: {len(preview.get('selected_candidates', []))}",
             f"Planned orders: {len(valid_plans)}",
@@ -92,7 +95,7 @@ def render_status() -> str:
         ])
     else:
         lines.extend([
-            "Pre-open plan: PENDING (after successful 08:30 ET data refresh)",
+            "Next-session plan: PENDING (after successful 16:30 ET post-close refresh)",
             f"Last completed scan: {scan.get('timestamp_utc', 'none')}",
             "Selected today: N/A (not evaluated yet)",
             "Planned orders: 0",

@@ -167,7 +167,8 @@ def alert_preopen_preview(scan: dict[str, Any]) -> None:
     buy_plans = list(scan.get("order_plans") or [])
     sell_plans = list(scan.get("sell_order_plans") or [])
     lines = [
-        "R1000 PRE-OPEN PLAN READY.",
+        "R1000 NEXT-SESSION PLAN READY.",
+        f"For session ET: {scan.get('preview_trade_date_et', 'unknown')}",
         f"Signal session: {scan.get('market_data_latest_date', 'unknown')}",
         f"Selected candidates: {len(scan.get('selected_candidates') or [])}",
         f"Planned orders: {len(buy_plans) + len(sell_plans)}",

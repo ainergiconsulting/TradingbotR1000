@@ -119,10 +119,13 @@ def run_engine_once(net_liquidation_value: float | None = None) -> int:
 
 def run_preopen_preview_once(
     net_liquidation_value: float | None = None,
+    preview_for_session_et: str | None = None,
 ) -> int:
-    """Run the normal strategy scan early, but return before broker execution."""
+    """Run the normal strategy scan after close, without broker execution."""
     engine = cfg.BASE_DIR / "trading_engine.py"
     command = [sys.executable, str(engine), "--preview-only"]
+    if preview_for_session_et:
+        command.extend(["--preview-for-session-et", preview_for_session_et])
     if net_liquidation_value is not None:
         command.extend(["--net-liquidation-value", str(net_liquidation_value)])
     log("controller launching pre-open preview", extra={"command": command})
@@ -135,7 +138,8 @@ UNIVERSE_REFRESH_STATUS_FILE = cfg.STATE_DIR / "iwb_universe_refresh.json"
 UNIVERSE_REFRESH_TIME_ET = clock_time(7, 45)
 MARKET_DATA_DAILY_STATE_FILE = cfg.STATE_DIR / "ibkr_market_data_daily_state.json"
 MARKET_DATA_REFRESH_STATUS_FILE = cfg.STATE_DIR / "ibkr_market_data_refresh.json"
-MARKET_DATA_REFRESH_TIME_ET = clock_time(8, 30)
+MARKET_DATA_REFRESH_TIME_ET = clock_time(16, 30)
+MARKET_DATA_REFRESH_RETRY_MINUTES = 5
 NY_TZ = ZoneInfo("America/New_York")
 
 
@@ -190,27 +194,45 @@ def run_weekly_universe_refresh(now: datetime | None = None) -> bool:
 
 
 def _market_data_refresh_due(now: datetime | None = None) -> bool:
+    """Refresh completed daily bars after the US regular-session close.
+
+    A fixed clock time is only the first-attempt trigger. Correctness is gated
+    by the session date returned by IBKR. If IBKR still reports the previous
+    completed session at 16:30 ET, retry after a short cooldown until the
+    current session appears.
+    """
     now_et = (now or datetime.now(timezone.utc)).astimezone(NY_TZ)
+    if not is_market_session_day(now_et.date()):
+        return False
     if now_et.time() < MARKET_DATA_REFRESH_TIME_ET:
         return False
+
     state = _read_json_file(MARKET_DATA_DAILY_STATE_FILE)
-    if state.get("attempt_date_et") == now_et.date().isoformat():
+    today_session = now_et.strftime("%Y%m%d")
+    state_status = str(state.get("status") or "").upper()
+    state_session = str(state.get("expected_latest_completed_session") or "")
+
+    if (
+        state_status in {"OK", "DEGRADED_ACCEPTABLE"}
+        and state_session == today_session
+    ):
         return False
-    previous_status = str(state.get("status") or "").upper()
-    if not previous_status:
-        previous_status = str(
-            _read_json_file(MARKET_DATA_REFRESH_STATUS_FILE).get("status") or ""
-        ).upper()
-    # Normal refresh is every US-market weekday. Through the weekend, retry
-    # only when the latest validated refresh itself is not OK. A stale/failed
-    # daily-state marker must not override a newer validated OK refresh (for
-    # example after a successful manual recovery on Saturday).
-    validated_status = str(
-        _read_json_file(MARKET_DATA_REFRESH_STATUS_FILE).get("status") or ""
-    ).upper()
-    if now_et.weekday() >= 5 and validated_status == "OK":
-        return False
-    return now_et.weekday() < 5 or previous_status != "OK"
+
+    completed_text = str(state.get("completed_at_utc") or "")
+    if completed_text:
+        try:
+            completed = datetime.fromisoformat(
+                completed_text.replace("Z", "+00:00")
+            )
+            if completed.tzinfo is None:
+                completed = completed.replace(tzinfo=timezone.utc)
+            age = (now_et.astimezone(timezone.utc) - completed).total_seconds()
+            if age < MARKET_DATA_REFRESH_RETRY_MINUTES * 60:
+                return False
+        except ValueError:
+            pass
+
+    return True
 
 
 def _run_market_data_refresh_once() -> int:
@@ -313,10 +335,19 @@ def run_daily_market_data_refresh(now: datetime | None = None, attempts: int = 3
     return False
 
 
+def _next_market_session_date(day) -> str:
+    candidate = day + timedelta(days=1)
+    while not is_market_session_day(candidate):
+        candidate += timedelta(days=1)
+    return candidate.isoformat()
+
+
 def _preopen_preview_due(now: datetime | None = None) -> bool:
-    """True once current-day daily bars are refreshed and today's preview is absent."""
+    """Preview only after IBKR confirms the just-completed session."""
     now_et = (now or datetime.now(timezone.utc)).astimezone(NY_TZ)
     if not is_market_session_day(now_et.date()):
+        return False
+    if now_et.time() < MARKET_DATA_REFRESH_TIME_ET:
         return False
 
     daily_state = _read_json_file(MARKET_DATA_DAILY_STATE_FILE)
@@ -328,15 +359,19 @@ def _preopen_preview_due(now: datetime | None = None) -> bool:
     }:
         return False
 
-    preview = _read_json_file(cfg.PREOPEN_PREVIEW_REPORT_FILE)
-    if preview.get("preview_trade_date_et") != now_et.date().isoformat():
-        return True
-
-    expected_session = str(
+    completed_session = str(
         daily_state.get("expected_latest_completed_session") or ""
     )
+    if completed_session != now_et.strftime("%Y%m%d"):
+        return False
+
+    target_session = _next_market_session_date(now_et.date())
+    preview = _read_json_file(cfg.PREOPEN_PREVIEW_REPORT_FILE)
+    if preview.get("preview_trade_date_et") != target_session:
+        return True
+
     preview_session = str(preview.get("market_data_latest_date") or "")
-    return bool(expected_session and preview_session != expected_session)
+    return preview_session != completed_session
 
 
 def _handle_preopen_preview_success() -> None:
@@ -370,8 +405,10 @@ def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None)
                 next_strategy_cycle=schedule["next_strategy_cycle_utc"],
             )
             write_runtime_bot_status("RUNNING", "preopen_preview_running")
+            now_et = datetime.now(timezone.utc).astimezone(NY_TZ)
             preview_code = run_preopen_preview_once(
                 net_liquidation_value=net_liquidation_value,
+                preview_for_session_et=_next_market_session_date(now_et.date()),
             )
             if preview_code == 0:
                 _handle_preopen_preview_success()
