@@ -134,3 +134,6 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Friday post-close previews are labeled for the next eligible session (normally Monday); weekends/holidays are skipped by the session calendar.
 - The regular 09:28 strategy cycle and 09:30 broker execution path remain unchanged.
 - Focused post-close/preview/Telegram tests passed; expanded operational/support suite passed 92/92.
+
+- Weekend catch-up after the timing change refreshed all 1,017 configured symbols through Friday 2026-09-18 with zero failures. The measured full-universe refresh duration was about 14m22s, so a 16:30 ET first attempt would normally publish the plan around 16:44-16:45 ET when IBKR's current-session bar is already available.
+- Generated and disclosed the Monday 2026-09-21 preview from Friday's close: CACC, GM, LAD and PAG; broker submitted remains 0.
