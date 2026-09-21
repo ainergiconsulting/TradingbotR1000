@@ -394,6 +394,17 @@ def supervise(max_restarts: int = 3, net_liquidation_value: float | None = None)
             universe_ok = run_weekly_universe_refresh()
             if not universe_ok:
                 log("weekly IWB universe refresh failed; continuing with last validated universe", level="WARNING")
+            else:
+                # A weekly IWB refresh can introduce symbols that were not in
+                # the prior daily-bar refresh. Backfill the newly active
+                # universe immediately, including on weekends, so the next
+                # strategy cycle is not blocked by missing data for new names.
+                universe_data_ok = run_daily_market_data_refresh()
+                if not universe_data_ok:
+                    log(
+                        "post-universe IBKR market-data refresh failed; trading remains fail-closed",
+                        level="ERROR",
+                    )
         if _market_data_refresh_due():
             refresh_ok = run_daily_market_data_refresh()
             if not refresh_ok:
