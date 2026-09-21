@@ -995,3 +995,26 @@ A Monday 2026-09-21 read-only preview was then generated from Friday's 20260918 
 
 [2026-09-20] WEEKLY PROGRAM DECISION
 User set the program for the coming week: no additional Massive subscription until the new PC/research environment is organized; test only what can be tested rigorously with data already available; within the week prepare a controlled move from PAPER to LIVE with a hard maximum strategy capital of EUR 10,000 equivalent; compare PAPER versus LIVE execution behavior before any later capital increase. Research priority: use the existing ten-year daily dataset to test broader candidate-pool/fill-efficiency selection at the close; inspect whether any locally preserved data can support an after-hours test, otherwise defer that empirical test rather than buying new data. LIVE transition must remain long-only/no-margin and require an explicit hard capital cap, read-only LIVE preflight, controlled minimum-size LIVE acceptance, separate PAPER/LIVE labeling, and execution-quality comparison. Detailed plan saved in docs/WEEK_PLAN_2026-09-20.md.
+
+[2026-09-21] MOBILE CANDIDATE HISTORY / ADDITIONAL CANDIDATES
+User requested that Telegram remain limited to essential operational messages and that the new broader-candidate visibility be implemented in the Mobile Manual Console instead. Requirement: retain normal strategy/order behavior unchanged; additionally expose up to 10 eligible candidates that were not selected because of slot/ranking limits. These additional candidates are informational only and MUST NOT create IBKR orders, reserve slots, consume capital, modify ranking/strategy state, or affect broker transmission.
+
+IMPLEMENTATION:
+- Added durable reports/candidate_history.jsonl archive with no automatic deletion.
+- Each PREVIEW and REGULAR strategy scan records all selected/planned BUY candidates plus up to the next 10 eligible candidates ranked by the existing 150-day price-appreciation ranking metric.
+- Each candidate record stores ticker, strategy rank, signal close, theoretical BUY limit at 97% of signal close, signal date, planned quantity when applicable, and broker-submission evidence for regular scans when available.
+- Mobile Manual Console now has menu item 15, Candidate History, with a rolling 15-day display. The 15-day period is display-only; the server archive is retained for later ex-post research.
+- Mobile API endpoint: /api/candidate-history?days=15.
+- PREVIEW and REGULAR records for the same trade date are both retained in the archive; the human-facing mobile view prefers the REGULAR record once it exists, otherwise it shows the PREVIEW.
+- Candidate-history persistence is intentionally fail-open relative to trading: if this informational archive write fails, the production trading cycle logs a warning but is not blocked.
+- Telegram code and behavior were intentionally not modified.
+
+BACKFILL:
+The new archive was initialized from the 23 retained historical daily scans in bot_state plus the current next-session preview. This immediately provides recent ex-post examples. In the current 15-day view, examples include Sep-16 planned BNY/JHX/NTRS plus additional MTG/AM/NBIX/etc.; Sep-11 OGN plus 10 additional candidates; Sep-10 CART/BRKR/RHI plus 10 additional candidates; Sep-09 five planned plus eight additional candidates. The Sep-21 preview currently contains four planned names (CACC, GM, LAD, PAG) and zero additional eligible candidates.
+
+VALIDATION:
+- New candidate-history unit tests: 3/3 PASS.
+- Candidate/strategy/trading/mobile targeted suite: 25/25 PASS.
+- Preview/controller isolation tests continue to confirm preview never enters broker transmission path.
+- A broader preview/Telegram-related test run had 18 PASS / 1 FAIL: the single failure is an existing state-sensitive Telegram status test expecting no current preview, while the real Sep-21 preview file is now legitimately present. No Telegram code was changed for this feature.
+- tradingbot-mobile-console and tradingbot-controller restarted successfully to load the feature; both ACTIVE. IB Gateway was not restarted; API 4002 remained LISTENING. Controller is IDLE with next regular cycle 2026-09-21T13:28:00Z.
