@@ -272,6 +272,7 @@ class PreviewEngineIsolationTests(unittest.TestCase):
             preview_path = Path(tmp) / "preview.json"
             with ExitStack() as stack:
                 stack.enter_context(patch.object(cfg, "PREOPEN_PREVIEW_REPORT_FILE", preview_path))
+                stack.enter_context(patch.object(cfg, "CANDIDATE_HISTORY_FILE", Path(tmp) / "candidate_history.jsonl"))
                 stack.enter_context(patch.object(cfg, "ensure_runtime_dirs"))
                 stack.enter_context(patch.object(trading_engine, "write_runtime_health"))
                 stack.enter_context(patch.object(trading_engine, "write_heartbeat"))

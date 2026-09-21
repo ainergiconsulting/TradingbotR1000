@@ -1018,3 +1018,14 @@ VALIDATION:
 - Preview/controller isolation tests continue to confirm preview never enters broker transmission path.
 - A broader preview/Telegram-related test run had 18 PASS / 1 FAIL: the single failure is an existing state-sensitive Telegram status test expecting no current preview, while the real Sep-21 preview file is now legitimately present. No Telegram code was changed for this feature.
 - tradingbot-mobile-console and tradingbot-controller restarted successfully to load the feature; both ACTIVE. IB Gateway was not restarted; API 4002 remained LISTENING. Controller is IDLE with next regular cycle 2026-09-21T13:28:00Z.
+
+[2026-09-21] CANDIDATE HISTORY TEST-CONTAMINATION INCIDENT — AAA SEP-20 REMOVED
+User reported Mobile Candidate History incorrectly showing "2026-09-20 PREVIEW / AAA PLANNED". Investigation proved this was synthetic unit-test data, not a real strategy candidate and not a broker order. Exact archive record had cycle_id=preview-cycle, strategy_version=test, symbol=AAA, limit 99.00, recorded_at_utc=2026-09-21T01:53:36Z. It was created by tests.test_preopen_preview.PreviewEngineIsolationTests: the test correctly redirected PREOPEN_PREVIEW_REPORT_FILE to a TemporaryDirectory but, after Candidate History was added, did not redirect CANDIDATE_HISTORY_FILE. Therefore record_candidate_snapshot() wrote the fake preview into the production candidate_history.jsonl during validation.
+
+CORRECTION:
+- Removed exactly the proven synthetic record (strategy_version=test, cycle_id=preview-cycle, AAA) from the candidate archive. Backup of the pre-cleanup archive retained server-side.
+- Patched test_preopen_preview.py so PreviewEngineIsolationTests also redirects CANDIDATE_HISTORY_FILE into its TemporaryDirectory.
+- Re-ran the isolation test twice and verified no preview-cycle/AAA contamination appeared in production archive.
+- Full targeted candidate/preview/strategy/trading suite: 34/34 PASS.
+- Mobile Candidate API now returns no Sep-20 record. Latest entry is Sep-21 PREVIEW: CACC, GM, LAD, PAG. Sep-18 REGULAR follows.
+- Restarted only tradingbot-mobile-console to refresh served state. Controller and IB Gateway remained active; Gateway was not restarted.
