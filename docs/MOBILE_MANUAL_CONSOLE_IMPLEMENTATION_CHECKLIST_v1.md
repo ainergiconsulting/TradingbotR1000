@@ -166,3 +166,13 @@ K. Final acceptance
 - Corrected lifecycle display to `PARTIALLY FILLED`.
 - Synthetic retry/dedup tests and Python compilation passed. No broker order was submitted; mobile mutations remain disabled.
 - Remaining acceptance: observe a controlled PAPER execution end-to-end and verify one timely Telegram execution notification plus later Flex confirmation with no duplicate.
+
+
+## Candidate History
+- [x] Read-only Candidate History page in mobile PWA.
+- [x] Show selected/planned candidates plus up to 10 additional ranked eligible candidates.
+- [x] Show signal close and theoretical 97% BUY limit.
+- [x] 15-day rolling mobile display.
+- [x] Durable server archive with no automatic deletion.
+- [x] Record regular-scan broker-submission evidence when available.
+- [x] No Telegram expansion and no broker mutation from additional candidates.

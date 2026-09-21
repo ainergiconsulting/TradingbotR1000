@@ -269,3 +269,7 @@ The exact module names may differ, but the layer responsibilities should remain 
 
 ### IBKR connectivity state model
 Operational health distinguishes `CONNECTED`, short-lived `UNKNOWN`, persistent `DEGRADED`, and hard `DISCONNECTED`. Persistent transient API failures are promoted to `DEGRADED` after 3 consecutive supervisor cycles. Health status must not remain `OK` when IBKR is not connected. Transition alerts are de-duplicated by state: one alert on entry to `DEGRADED` or `DISCONNECTED`, and one recovery alert when `CONNECTED` is restored.
+
+
+## Read-only candidate history
+The production scan persists a durable informational history of BUY candidates. Each PREVIEW or REGULAR scan records all strategy-selected BUY candidates plus up to 10 additional eligible candidates from the same 150-day price-appreciation ranking. Additional candidates never create broker orders, reserve position slots, consume capital, or modify strategy state. The mobile console displays a rolling 15-day view while the server-side archive is retained without automatic deletion. Telegram is intentionally not extended for this feature.

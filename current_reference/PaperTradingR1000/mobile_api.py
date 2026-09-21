@@ -19,6 +19,7 @@ import manual_trading_core as core
 import mobile_auth as auth
 from live_account import collect_live_account_context
 from flex_execution_ledger import latest as ledger_latest, order_history as ledger_order_history, pnl_summary as ledger_pnl_summary
+from candidate_history import recent_candidate_history
 from mobile_r1000_selector import get_r1000_symbol, load_r1000_universe, search_r1000
 
 BASE = Path(__file__).resolve().parent
@@ -270,6 +271,17 @@ def pnl():
     result["history_status"] = "PARTIAL_HISTORY" if result.get("through") else "NO_HISTORY"
     result["source"] = "IBKR_FLEX_TRADE_CONFIRMATION"
     return _plain(result)
+
+
+@app.get("/api/candidate-history")
+def candidate_history(days: int = Query(15, ge=1, le=90)):
+    snapshots = recent_candidate_history(days=days)
+    return {
+        "display_days": days,
+        "archive_retention": "DURABLE_NO_AUTOMATIC_DELETION",
+        "additional_candidate_limit": 10,
+        "snapshots": _plain(snapshots),
+    }
 
 
 @app.get("/api/r1000")

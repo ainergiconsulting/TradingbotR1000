@@ -19,6 +19,7 @@ from typing import Iterable, Any
 from zoneinfo import ZoneInfo
 
 from automated_broker import AutomatedBrokerError, process_order_plan
+from candidate_history import record_candidate_snapshot
 import config as cfg
 from config_loader import ConfigError, ensure_runtime_ready, load_universe_config
 from control_utils import read_blocked_symbols, read_ignored_symbols, stop_bot_requested
@@ -584,6 +585,10 @@ def run_scan_once(
         scan["preview_created_at_utc"] = utc_timestamp()
         scan["broker_orders_transmitted"] = 0
         atomic_write_json(cfg.PREOPEN_PREVIEW_REPORT_FILE, scan)
+        try:
+            record_candidate_snapshot(scan, scan_kind="PREVIEW")
+        except Exception as exc:
+            log("candidate history record failed", level="WARNING", extra={"scan_kind": "PREVIEW", "error": repr(exc)})
         write_heartbeat(
             event="preopen_preview_completed",
             selected=len(scan["selected_candidates"]),
@@ -641,6 +646,10 @@ def run_scan_once(
         "rejected_orders": execution_report["rejected_orders"],
     }
     scan["order_submission"] = "submitted" if execution_report["broker_orders_transmitted"] else "disabled"
+    try:
+        record_candidate_snapshot(scan, scan_kind="REGULAR", execution_report=execution_report)
+    except Exception as exc:
+        log("candidate history record failed", level="WARNING", extra={"scan_kind": "REGULAR", "error": repr(exc)})
     order_plan_payload = {
         "timestamp_utc": scan["timestamp_utc"],
         "cycle_id": scan["cycle_id"],

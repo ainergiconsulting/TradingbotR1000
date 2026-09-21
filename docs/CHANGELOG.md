@@ -137,3 +137,12 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 
 - Weekend catch-up after the timing change refreshed all 1,017 configured symbols through Friday 2026-09-18 with zero failures. The measured full-universe refresh duration was about 14m22s, so a 16:30 ET first attempt would normally publish the plan around 16:44-16:45 ET when IBKR's current-session bar is already available.
 - Generated and disclosed the Monday 2026-09-21 preview from Friday's close: CACC, GM, LAD and PAG; broker submitted remains 0.
+
+
+## Candidate History (2026-09-21)
+- Mobile console exposes a read-only 15-day rolling view of strategy candidates.
+- Each scan stores all candidates that produced planned BUY orders plus up to 10 additional eligible candidates from the same 150-day ranking logic.
+- Each row stores ticker, signal close, theoretical 97% BUY limit, strategy rank, signal date, planned quantity where applicable, and broker-submission evidence for regular scans where available.
+- Additional candidates are informational only: they never create orders, reserve slots, consume capital, or alter strategy state.
+- The server-side JSONL archive has no automatic deletion; 15 days is only the mobile display window.
+- Telegram behavior is intentionally unchanged.

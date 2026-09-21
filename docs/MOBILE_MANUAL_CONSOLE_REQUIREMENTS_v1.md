@@ -215,3 +215,12 @@ The requirement that every actual broker execution be reported on Telegram is im
 - Delivery must be monitored: a missing expected daily report must be detectable and reported rather than silently ignored.
 - Report email and attachments must not expose credentials, Flex tokens, or other secrets in application logs.
 - Exact delivery time, recipient address, and retention policy will be configured before production activation.
+
+
+## Candidate History (2026-09-21)
+- Mobile console exposes a read-only 15-day rolling view of strategy candidates.
+- Each scan stores all candidates that produced planned BUY orders plus up to 10 additional eligible candidates from the same 150-day ranking logic.
+- Each row stores ticker, signal close, theoretical 97% BUY limit, strategy rank, signal date, planned quantity where applicable, and broker-submission evidence for regular scans where available.
+- Additional candidates are informational only: they never create orders, reserve slots, consume capital, or alter strategy state.
+- The server-side JSONL archive has no automatic deletion; 15 days is only the mobile display window.
+- Telegram behavior is intentionally unchanged.
