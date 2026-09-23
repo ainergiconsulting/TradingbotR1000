@@ -1068,3 +1068,20 @@ VALIDATION:
 - ABNB production-data pure check: latest completed session 20260922; holding days=10; time-exit signal generated.
 - Local runtime state repaired using read-only broker snapshot only. No order was placed, modified or cancelled during repair.
 - Restarted tradingbot-controller and tradingbot-execution-monitor only. Telegram listener and IB Gateway remained active; Gateway was not restarted. Execution monitor reconnected successfully in read-only polling mode.
+
+[2026-09-23] MOBILE IBKR CONNECTION QUEUE — SHORT-LIVED SESSION CORRECTION
+A live TCP inspection found two persistent API connections to IB Gateway port 4002: the execution monitor and the Mobile Manual Console. The mobile uvicorn connection had accumulated a large receive queue while idle. Root cause in mobile_api.py: a global IB_CLIENT remained connected between HTTP requests although no continuous IB event loop consumed Gateway traffic while the PWA was idle.
+
+CORRECTION:
+- Mobile broker operations now use a serialized short-lived IBKR session: connect -> perform the requested operation/read -> wait for its result -> disconnect in finally.
+- The existing single-worker BROKER_EXECUTOR remains in place, preventing concurrent mobile broker sessions.
+- Mobile /api/status no longer creates or retains a persistent API client; it performs a short API reachability/account-mode probe and disconnects.
+- Existing mobile functions/routes and manual_trading_core logic were retained. No BUY/SELL/CANCEL behavior was removed or altered by this connection-lifecycle change.
+- The PC manual console code/reference is retained for future use, but there is no separate PC manual-console systemd service/process currently running; therefore there was no live PC client to stop. Operationally it remains suspended unless explicitly launched.
+- Execution monitor remains the sole persistent API client because continuous fill monitoring requires it.
+
+VALIDATION:
+- Restarted tradingbot-mobile-console only; controller, execution monitor and IB Gateway remained active and Gateway was not restarted.
+- Existing mobile schema test PASS.
+- Direct functional probe through the new mobile broker path connected successfully to PAPER Gateway, saw one managed account, returned its result, and left no persistent mobile IB_CLIENT.
+- TCP inspection after restart and after the functional probe showed only the execution-monitor connection to port 4002; the previous uvicorn/mobile persistent socket and its receive queue were gone.

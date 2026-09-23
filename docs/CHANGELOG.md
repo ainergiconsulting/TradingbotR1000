@@ -153,3 +153,6 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Added one-notification-per-completed-order Telegram logic. Partial fills are accumulated and no completion message is emitted until the intended order quantity is fully executed.
 - The read-only execution monitor now polls IBKR executions every 5 seconds in addition to durable Flex fallback, avoiding reliance on cross-client execution events.
 - Reconciliation and Flex sync use the same order-completion deduplication path.
+
+## 2026-09-23 — Mobile IBKR connection lifecycle
+The Mobile Manual Console no longer keeps an IBKR API socket open while idle. Broker-dependent mobile requests are serialized through the existing single worker and use connect/use/disconnect lifecycle with disconnect guaranteed in finally. This preserves current mobile functions while preventing idle Gateway traffic from accumulating in a persistent TCP receive queue. The execution monitor remains persistent because it continuously consumes broker executions. The PC manual-console implementation is retained but is not an active systemd service/process.

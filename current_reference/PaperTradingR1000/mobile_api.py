@@ -54,16 +54,26 @@ def _socket_ok() -> bool:
 
 
 async def _broker_call(function, *args, **kwargs):
+    """Run one serialized mobile broker operation on a short-lived API session.
+
+    The old mobile design kept client 1001 connected between HTTP requests.
+    Because no IB event loop ran while the PWA was idle, Gateway traffic could
+    accumulate in the TCP receive queue.  Connect/use/disconnect preserves the
+    same request semantics without leaving an idle API client behind.
+    """
     loop = asyncio.get_running_loop()
+
     def work():
-        global IB_CLIENT
-        if IB_CLIENT is None:
-            worker_loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(worker_loop)
-            IB_CLIENT = IB()
-        if not IB_CLIENT.isConnected():
-            core.connect_manual_console(IB_CLIENT)
-        return function(IB_CLIENT, *args, **kwargs)
+        worker_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(worker_loop)
+        ib = IB()
+        try:
+            core.connect_manual_console(ib)
+            return function(ib, *args, **kwargs)
+        finally:
+            if ib.isConnected():
+                ib.disconnect()
+
     try:
         return await loop.run_in_executor(BROKER_EXECUTOR, work)
     except core.ManualControlError as exc:
@@ -74,6 +84,12 @@ async def _broker_call(function, *args, **kwargs):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global IB_CLIENT
+    # Disconnect any legacy persistent mobile connection left by an older
+    # process version. New requests use short-lived serialized sessions.
+    if IB_CLIENT is not None and IB_CLIENT.isConnected():
+        IB_CLIENT.disconnect()
+    IB_CLIENT = None
     yield
     BROKER_EXECUTOR.shutdown(wait=False, cancel_futures=True)
 
@@ -159,18 +175,25 @@ def service_worker():
 @app.get("/api/status")
 async def status():
     socket_status = _socket_ok()
-    if socket_status and (IB_CLIENT is None or not IB_CLIENT.isConnected()):
+    account_mode = "UNKNOWN"
+    api_reachable = False
+    if socket_status:
         try:
-            await _broker_call(lambda ib: ib.isConnected())
+            probe = await _broker_call(
+                lambda ib: {
+                    "connected": bool(ib.isConnected()),
+                    "accounts": [str(x) for x in (ib.managedAccounts() or [])],
+                }
+            )
+            api_reachable = bool(probe.get("connected"))
+            accounts = probe.get("accounts") or []
+            account_id = accounts[0] if accounts else None
+            account_mode = "PAPER" if account_id and str(account_id).upper().startswith("DU") else ("LIVE" if account_id else "UNKNOWN")
         except HTTPException:
             pass
-    connected = bool(IB_CLIENT is not None and IB_CLIENT.isConnected())
-    accounts = IB_CLIENT.managedAccounts() if connected else []
-    account_id = accounts[0] if accounts else None
-    paper = bool(account_id and str(account_id).upper().startswith("DU"))
-    return {"gateway_socket": socket_status, "ibkr_api": connected,
+    return {"gateway_socket": socket_status, "ibkr_api": api_reachable,
             "manual_client_id": core.MANUAL_CLIENT_ID,
-            "account_mode": "PAPER" if paper else ("LIVE" if account_id else "UNKNOWN"),
+            "account_mode": account_mode,
             "trading": "READ_ONLY_BUILD" if not MUTATIONS_ENABLED else "MUTATIONS_ENABLED",
             "mutations_enabled": MUTATIONS_ENABLED}
 
