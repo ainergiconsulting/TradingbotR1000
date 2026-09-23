@@ -211,8 +211,8 @@ async def account():
         BROKER_EXECUTOR, _canonical_mobile_snapshot
     )
     values = snapshot.get("account_values", {})
-    # Cumulative realized P&L comes from the durable official Flex fill ledger.
-    # IBKR accountSummary RealizedPnL is deliberately not labelled cumulative.
+    # Flex is the durable accounting source; unconfirmed IBKR API executions
+    # are added provisionally and automatically disappear once Flex confirms them.
     ledger = ledger_pnl_summary()
     realized_since_start = ledger.get("realized_pnl_since_start")
     unrealized = values.get("unrealized_pnl")
@@ -232,10 +232,14 @@ async def account():
         "available_funds": item("available_funds"),
         "buying_power": item("buying_power"),
         "realized_pnl_since_start": {"value": realized_since_start, "currency": "USD"},
+        "confirmed_realized_pnl": {"value": ledger.get("confirmed_realized_pnl"), "currency": "USD"},
+        "pending_realized_pnl": {"value": ledger.get("pending_realized_pnl"), "currency": "USD"},
+        "pending_execution_count": ledger.get("pending_execution_count", 0),
         "current_unrealized_pnl": item("unrealized_pnl"),
         "combined_pnl": {"value": combined, "currency": "USD" if combined is not None else None},
         "pnl_start_date": ledger.get("pnl_start_date"),
         "pnl_through": ledger.get("through"),
+        "pnl_pending_through": ledger.get("pending_through"),
         "pnl_history_status": "PARTIAL_HISTORY" if ledger.get("through") else "NO_HISTORY",
         "snapshot_timestamp_utc": snapshot.get("timestamp_utc"),
     }
@@ -292,7 +296,7 @@ async def execution_orders(
 def pnl():
     result = ledger_pnl_summary()
     result["history_status"] = "PARTIAL_HISTORY" if result.get("through") else "NO_HISTORY"
-    result["source"] = "IBKR_FLEX_TRADE_CONFIRMATION"
+    result["source"] = "IBKR_FLEX_PLUS_PENDING_API_EXECUTIONS"
     return _plain(result)
 
 

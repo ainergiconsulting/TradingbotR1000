@@ -280,3 +280,10 @@ The production scan persists a durable informational history of BUY candidates. 
 - Added one-notification-per-completed-order Telegram logic. Partial fills are accumulated and no completion message is emitted until the intended order quantity is fully executed.
 - The read-only execution monitor now polls IBKR executions every 5 seconds in addition to durable Flex fallback, avoiding reliance on cross-client execution events.
 - Reconciliation and Flex sync use the same order-completion deduplication path.
+
+
+## 2026-09-23 — Mobile current realized P&L
+- Account Summary realized P&L now equals Flex-confirmed realized P&L plus unconfirmed IBKR API realized P&L, with exec-ID deduplication so Flex confirmation replaces rather than duplicates provisional data.
+- The UI exposes confirmed and Pending Flex components separately.
+- Pending API commissions are normalized to the negative-cost convention used by Flex.
+- Combined P&L uses current realized P&L plus live unrealized P&L.

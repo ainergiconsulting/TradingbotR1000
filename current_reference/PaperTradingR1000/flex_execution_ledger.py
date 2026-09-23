@@ -345,9 +345,13 @@ def order_history(*, start_date: str | None = None, side: str = "ALL", symbol: s
             (side, side, symbol, symbol),
         ).fetchall()
     for oid, sym, sd, dt, qty, avg, fills, commission, realized_pnl in pending:
+        # IBKR API CommissionReport exposes commission as a positive cost, while
+        # Flex stores costs as negative values. Normalize human-facing history
+        # to the Flex convention so pending and confirmed rows are comparable.
+        normalized_commission = -abs(float(commission)) if commission is not None else None
         orders.append({"ib_order_id": oid, "symbol": sym, "side": sd, "trade_date": str(dt or "")[:10].replace("-", ""),
                        "first_fill_time": dt, "quantity": qty, "average_price": avg, "fill_count": fills,
-                       "commission": commission, "realized_pnl": realized_pnl, "order_type": "", "flex_confirmed": 0,
+                       "commission": normalized_commission, "realized_pnl": realized_pnl, "order_type": "", "flex_confirmed": 0,
                        "last_trade_date": str(dt or "")[:10].replace("-", ""), "last_fill_time": dt})
     orders.sort(key=lambda x: str(x.get("last_fill_time") or x.get("last_trade_date") or ""), reverse=True)
     return {"orders": orders[:int(limit)], "total_orders": int(total) + len(pending), "limit": int(limit), "offset": int(offset), "start_date": start_date, "side": side, "symbol": symbol,
@@ -355,6 +359,12 @@ def order_history(*, start_date: str | None = None, side: str = "ALL", symbol: s
 
 
 def pnl_summary(path: Path = DB_PATH, start_date: str | None = None) -> dict:
+    """Return current realized P&L without double-counting API fills later confirmed by Flex.
+
+    Flex is the durable accounting source. IBKR API execution/commission reports
+    are included provisionally only while that execution has not yet appeared in
+    Flex. Once Flex confirms it, the provisional contribution disappears.
+    """
     if start_date is None:
         try:
             import config as cfg
@@ -362,29 +372,68 @@ def pnl_summary(path: Path = DB_PATH, start_date: str | None = None) -> dict:
         except Exception:
             start_date = "2026-09-01"
     start_key = str(start_date).replace("-", "")
+    start_iso = str(start_date)[:10]
     with connect(path) as conn:
-        total, first_trade, last_trade = conn.execute(
+        confirmed_total, first_trade, last_trade = conn.execute(
             "SELECT COALESCE(SUM(realized_pnl),0), MIN(trade_date), MAX(trade_date) FROM flex_executions WHERE trade_date>=?",
             (start_key,),
         ).fetchone()
-        commission = conn.execute(
+        confirmed_commission = conn.execute(
             "SELECT COALESCE(SUM(commission),0) FROM flex_executions WHERE trade_date>=?", (start_key,)
         ).fetchone()[0]
-        per_symbol = [
-            {"symbol": s, "realized_pnl": pnl}
+
+        pending_total, pending_commission_raw, pending_count, pending_through = conn.execute(
+            """SELECT COALESCE(SUM(COALESCE(n.realized_pnl,0)),0),
+                      COALESCE(SUM(CASE WHEN n.commission IS NULL THEN 0 ELSE ABS(n.commission) END),0),
+                      COUNT(*),
+                      MAX(COALESCE(NULLIF(n.execution_time,''), n.observed_at_utc))
+               FROM execution_notifications n
+               WHERE n.flex_confirmed_at_utc IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM flex_executions f WHERE f.ib_exec_id=n.exec_id)
+                 AND substr(COALESCE(NULLIF(n.execution_time,''), n.observed_at_utc),1,10) >= ?""",
+            (start_iso,),
+        ).fetchone()
+        pending_commission = -abs(float(pending_commission_raw or 0))
+
+        per_symbol_map = {
+            s: float(pnl or 0)
             for s, pnl in conn.execute(
                 """SELECT symbol, COALESCE(SUM(realized_pnl),0)
                    FROM flex_executions WHERE trade_date>=? GROUP BY symbol ORDER BY symbol""",
                 (start_key,),
             ).fetchall()
-        ]
+        }
+        for symbol, pnl in conn.execute(
+            """SELECT n.symbol, COALESCE(SUM(COALESCE(n.realized_pnl,0)),0)
+               FROM execution_notifications n
+               WHERE n.flex_confirmed_at_utc IS NULL
+                 AND NOT EXISTS (SELECT 1 FROM flex_executions f WHERE f.ib_exec_id=n.exec_id)
+                 AND substr(COALESCE(NULLIF(n.execution_time,''), n.observed_at_utc),1,10) >= ?
+               GROUP BY n.symbol""",
+            (start_iso,),
+        ).fetchall():
+            per_symbol_map[str(symbol)] = per_symbol_map.get(str(symbol), 0.0) + float(pnl or 0)
+
+    confirmed_total = float(confirmed_total or 0)
+    pending_total = float(pending_total or 0)
+    current_total = confirmed_total + pending_total
+    current_commission = float(confirmed_commission or 0) + pending_commission
     return {
-        "realized_pnl_since_start": float(total or 0),
-        "commissions_since_start": float(commission or 0),
+        "realized_pnl_since_start": current_total,
+        "confirmed_realized_pnl": confirmed_total,
+        "pending_realized_pnl": pending_total,
+        "commissions_since_start": current_commission,
+        "confirmed_commissions": float(confirmed_commission or 0),
+        "pending_commissions": pending_commission,
+        "pending_execution_count": int(pending_count or 0),
+        "pending_through": pending_through,
         "pnl_start_date": start_date,
         "first_imported_trade_on_or_after_start": first_trade,
         "through": last_trade,
-        "per_symbol": per_symbol,
+        "per_symbol": [
+            {"symbol": symbol, "realized_pnl": pnl}
+            for symbol, pnl in sorted(per_symbol_map.items())
+        ],
     }
 
 

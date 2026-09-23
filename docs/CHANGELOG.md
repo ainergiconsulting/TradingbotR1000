@@ -156,3 +156,10 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 
 ## 2026-09-23 — Mobile IBKR connection lifecycle
 The Mobile Manual Console no longer keeps an IBKR API socket open while idle. Broker-dependent mobile requests are serialized through the existing single worker and use connect/use/disconnect lifecycle with disconnect guaranteed in finally. This preserves current mobile functions while preventing idle Gateway traffic from accumulating in a persistent TCP receive queue. The execution monitor remains persistent because it continuously consumes broker executions. The PC manual-console implementation is retained but is not an active systemd service/process.
+
+
+## 2026-09-23 — Mobile current realized P&L
+- Account Summary realized P&L now equals Flex-confirmed realized P&L plus unconfirmed IBKR API realized P&L, with exec-ID deduplication so Flex confirmation replaces rather than duplicates provisional data.
+- The UI exposes confirmed and Pending Flex components separately.
+- Pending API commissions are normalized to the negative-cost convention used by Flex.
+- Combined P&L uses current realized P&L plus live unrealized P&L.

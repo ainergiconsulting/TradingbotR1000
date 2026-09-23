@@ -1085,3 +1085,26 @@ VALIDATION:
 - Existing mobile schema test PASS.
 - Direct functional probe through the new mobile broker path connected successfully to PAPER Gateway, saw one managed account, returned its result, and left no persistent mobile IB_CLIENT.
 - TCP inspection after restart and after the functional probe showed only the execution-monitor connection to port 4002; the previous uvicorn/mobile persistent socket and its receive queue were gone.
+
+
+[2026-09-23] MOBILE CONSOLE REALIZED P&L / PENDING FLEX CORRECTION
+User reported that Account Summary realized P&L did not agree with same-day executions shown in Mobile Execution History. Investigation confirmed the previous account summary used only Flex-confirmed realized P&L, current through 20260922, while Sep-23 ABNB SELL execution evidence was already available from IBKR API but still Pending Flex.
+
+ROOT CAUSE / DATA:
+- Flex-confirmed realized P&L through 20260922: +29,504.572284 USD.
+- Sep-23 ABNB SELL API realized P&L: -12,805.594273 USD, not yet Flex-confirmed at investigation time.
+- Correct current provisional realized P&L: +16,698.978011 USD.
+- Pending API commission data uses a positive-cost convention while Flex stores commission costs as negative numbers, causing inconsistent display.
+- Two synthetic test executions (AAA e1/e2, broker order 10, 40@10 + 60@11) from an earlier test-contamination incident were still present in execution_notifications and appeared in Mobile Execution History.
+
+CORRECTION:
+- pnl_summary now combines durable Flex-confirmed realized P&L with only IBKR API executions not yet represented in Flex. When the same exec ID appears in Flex, the provisional API contribution is excluded automatically, preventing double counting.
+- Mobile Account Summary now exposes current realized P&L plus separate Flex-confirmed and Pending Flex components. Combined P&L uses current realized + current live unrealized.
+- Pending API commissions are normalized to the same negative-cost convention used by Flex for human-facing history and totals.
+- Removed exactly the proven synthetic AAA e1/e2 rows from the operational execution ledger after creating a database backup.
+- Mobile JS cache version bumped so devices fetch the corrected display.
+VALIDATION:
+- Production ledger after correction: current realized +16,698.978011; confirmed +29,504.572284; pending -12,805.594273.
+- Pending history now shows CHYM BUY commission -18.015803 and ABNB SELL commission -9.950773; synthetic AAA no longer appears.
+- New regression test verifies provisional P&L inclusion, negative commission normalization, and automatic removal of provisional contribution once the same exec becomes Flex-confirmed.
+- Targeted tests: 19/19 PASS.
