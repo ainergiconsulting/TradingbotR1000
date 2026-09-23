@@ -6,6 +6,7 @@ from typing import Any
 
 from monitoring_io import utc_timestamp
 from state_store import default_state, load_state, save_state
+from position_lifecycle import infer_current_long_entry_date
 try:
     from .symbol_mapping import canonical_symbol
 except ImportError:  # pragma: no cover - supports direct script execution.
@@ -29,7 +30,8 @@ def rebuild_state_from_broker(
             "market_value": float(row.get("marketValue", 0) or 0),
             "unrealized_pnl": float(row.get("unrealizedPNL", 0) or 0),
             "filled_entry_date": row.get("filled_entry_date")
-            or (previous_positions.get(canonical_symbol(row["symbol"])) or {}).get("filled_entry_date"),
+            or (previous_positions.get(canonical_symbol(row["symbol"])) or {}).get("filled_entry_date")
+            or infer_current_long_entry_date(canonical_symbol(row["symbol"]), float(row.get("quantity", 0) or 0)),
             "holding_trading_days": int(
                 row.get("holding_trading_days")
                 or (previous_positions.get(canonical_symbol(row["symbol"])) or {}).get("holding_trading_days", 0)

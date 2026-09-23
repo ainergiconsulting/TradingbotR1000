@@ -28,6 +28,7 @@ from investable_capital_control import evaluate as evaluate_investable_capital_c
 from live_account import LiveAccountError, calculate_operational_buy_budget, collect_live_account_context
 from logger_utils import log
 from monitoring_io import atomic_write_json, utc_timestamp
+from position_lifecycle import holding_trading_days
 from quality_monitor import record_cycle as record_quality_monitor_cycle
 from reconciliation import reconcile_local_state
 from runtime_health import HEALTH_FAILED, HEALTH_OK, HEALTH_STARTING, write_runtime_health
@@ -142,6 +143,7 @@ def load_daily_closes(symbols: Iterable[str], daily_bars_dir: Path) -> dict[str,
 
 def load_daily_bar_data(symbols: Iterable[str], daily_bars_dir: Path) -> dict[str, Any]:
     closes_by_symbol: dict[str, list[float]] = {}
+    dates_by_symbol: dict[str, list[str]] = {}
     signal_dates: dict[str, str] = {}
     status_rows: list[dict[str, Any]] = []
     latest_date = ""
@@ -201,6 +203,7 @@ def load_daily_bar_data(symbols: Iterable[str], daily_bars_dir: Path) -> dict[st
         latest_date = max(latest_date, last_date)
         latest_mtime = max(latest_mtime, path.stat().st_mtime)
         closes_by_symbol[symbol] = closes
+        dates_by_symbol[symbol] = dates
         signal_dates[symbol] = last_date
         status_rows.append(
             {
@@ -219,9 +222,11 @@ def load_daily_bar_data(symbols: Iterable[str], daily_bars_dir: Path) -> dict[st
                 row["status"] = "excluded"
                 row["reason"] = "stale_market_data"
                 closes_by_symbol.pop(str(row["symbol"]), None)
+                dates_by_symbol.pop(str(row["symbol"]), None)
                 signal_dates.pop(str(row["symbol"]), None)
     return {
         "closes_by_symbol": closes_by_symbol,
+        "dates_by_symbol": dates_by_symbol,
         "signal_dates": signal_dates,
         "status_rows": status_rows,
         "latest_date": latest_date,
@@ -499,6 +504,13 @@ def run_scan_once(
         list(broker_context.get("positions") or []),
         list(broker_context.get("open_orders") or []),
     )
+    for _symbol, _position in (state.get("active_positions") or {}).items():
+        _dates = (market_data.get("dates_by_symbol") or {}).get(_symbol) or []
+        _entry = str(_position.get("filled_entry_date") or "")
+        if _entry and _dates:
+            _position["holding_trading_days"] = holding_trading_days(_entry, _dates)
+    from state_store import save_state as _save_state
+    _save_state(state)
     scan = scan_from_closes(
         closes_by_symbol,
         net_liquidation_value=net_liquidation_value,

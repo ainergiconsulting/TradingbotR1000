@@ -7,8 +7,7 @@ from typing import Any
 
 import config as cfg
 from automated_order_store import load_store, normalize_broker_status, save_store
-from flex_execution_ledger import mark_execution_notified, observe_execution
-from telegram_alerts import alert_execution_filled
+from order_completion_alerts import process_execution
 from monitoring_core import read_json
 from monitoring_io import atomic_write_json, utc_timestamp
 from startup_rebuild import rebuild_and_save
@@ -124,16 +123,16 @@ def reconcile_automated_orders(broker_snapshot: dict[str, Any]) -> dict[str, int
         side = "BUY" if side_raw in {"BOT", "BUY"} else ("SELL" if side_raw in {"SLD", "SELL"} else side_raw)
         shares = float(execution.get("shares") or 0)
         price = float(execution.get("price") or 0)
-        if observe_execution(exec_id, source="IBKR_API", symbol=symbol, side=side, quantity=shares, price=price):
-            alert_execution_filled({
-                "symbol": symbol,
-                "side": side,
-                "quantity": shares,
-                "price": price,
-                "date_time": execution.get("time"),
-                "source": "IBKR API execution",
-            })
-            mark_execution_notified(exec_id)
+        process_execution(
+            exec_id=exec_id,
+            symbol=symbol,
+            side=side,
+            quantity=shares,
+            price=price,
+            execution_time=str(execution.get("time") or ""),
+            api_order_id=str(execution.get("orderId") or ""),
+            source="IBKR_API",
+        )
         order_id = str(execution.get("orderId") or "")
         perm_id = str(execution.get("permId") or "")
         shares = float(execution.get("shares") or 0)

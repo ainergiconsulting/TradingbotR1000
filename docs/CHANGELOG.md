@@ -146,3 +146,10 @@ FINAL VERIFICATION ADDENDUM 2026-09-17:
 - Additional candidates are informational only: they never create orders, reserve slots, consume capital, or alter strategy state.
 - The server-side JSONL archive has no automatic deletion; 15 days is only the mobile display window.
 - Telegram behavior is intentionally unchanged.
+
+## 2026-09-23 — Order completion notifications and holding-period lifecycle
+- Added durable position-entry reconstruction from confirmed Flex fills with automated-order fallback for recent fills not yet present in Flex.
+- Holding period is recalculated from actual completed market sessions, with the entry session counted as day 1. This repairs the 10-trading-day time exit after state rebuilds.
+- Added one-notification-per-completed-order Telegram logic. Partial fills are accumulated and no completion message is emitted until the intended order quantity is fully executed.
+- The read-only execution monitor now polls IBKR executions every 5 seconds in addition to durable Flex fallback, avoiding reliance on cross-client execution events.
+- Reconciliation and Flex sync use the same order-completion deduplication path.

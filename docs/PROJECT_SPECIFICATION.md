@@ -273,3 +273,10 @@ Operational health distinguishes `CONNECTED`, short-lived `UNKNOWN`, persistent 
 
 ## Read-only candidate history
 The production scan persists a durable informational history of BUY candidates. Each PREVIEW or REGULAR scan records all strategy-selected BUY candidates plus up to 10 additional eligible candidates from the same 150-day price-appreciation ranking. Additional candidates never create broker orders, reserve position slots, consume capital, or modify strategy state. The mobile console displays a rolling 15-day view while the server-side archive is retained without automatic deletion. Telegram is intentionally not extended for this feature.
+
+## 2026-09-23 — Order completion notifications and holding-period lifecycle
+- Added durable position-entry reconstruction from confirmed Flex fills with automated-order fallback for recent fills not yet present in Flex.
+- Holding period is recalculated from actual completed market sessions, with the entry session counted as day 1. This repairs the 10-trading-day time exit after state rebuilds.
+- Added one-notification-per-completed-order Telegram logic. Partial fills are accumulated and no completion message is emitted until the intended order quantity is fully executed.
+- The read-only execution monitor now polls IBKR executions every 5 seconds in addition to durable Flex fallback, avoiding reliance on cross-client execution events.
+- Reconciliation and Flex sync use the same order-completion deduplication path.

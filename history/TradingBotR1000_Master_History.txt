@@ -1029,3 +1029,42 @@ CORRECTION:
 - Full targeted candidate/preview/strategy/trading suite: 34/34 PASS.
 - Mobile Candidate API now returns no Sep-20 record. Latest entry is Sep-21 PREVIEW: CACC, GM, LAD, PAG. Sep-18 REGULAR follows.
 - Restarted only tradingbot-mobile-console to refresh served state. Controller and IB Gateway remained active; Gateway was not restarted.
+
+[2026-09-21] MONDAY BUY BLOCK — ROOT CAUSE AND CORRECTION
+The regular Sep-21 cycle selected four BUY candidates from Sep-18 completed bars but the full-universe market-data guard blocked transmission. Root cause: the weekly IWB universe refresh ran after the prior weekend daily-bar refresh and introduced five symbols without local bar files. The dataset date and IBKR refresh status were otherwise current. The current universe was refreshed immediately: 1017 symbols were already current, 5 were updated, 95 rows were added, and failures were zero. A repeat scan then showed market_data_compliance OK and zero critical exclusions.
+
+The authorized PAPER cycle was rerun and the four intended limit orders were transmitted successfully; broker status returned Submitted for all four. No LIVE account was used.
+
+Structural correction: after every successful weekly IWB universe refresh, operational_controller now immediately refreshes IBKR daily bars for the newly active universe, including on weekends. Failure of this follow-up remains fail-closed. Targeted universe-followup, preview and trading-engine tests passed. Controller restarted to load the correction; IB Gateway was not restarted and API 4002 remained listening. Source fix committed and pushed as 00b65df2e2590d256c227512799f644f2f69fc70.
+
+[2026-09-23] ORDER-COMPLETION TELEGRAM + 10-TRADING-DAY EXIT REPAIR
+User reported two production issues: (1) Telegram reported order submission but not reliable final completion of BUY/SELL orders; (2) ABNB, filled Sep-09, was still held with the 10-trading-day exit apparently inactive.
+
+ROOT CAUSE — HOLDING DAYS:
+Broker-rebuilt positions carried filled_entry_date=null and holding_trading_days=0. startup_rebuild preserved prior lifecycle metadata when available but had no recovery path when that metadata was missing. ABNB therefore remained at holding day 0 despite confirmed Flex BUY executions on Sep-09 totaling the live 1,176-share position. The same metadata gap affected newer positions PR and ALL.
+
+CORRECTION — HOLDING DAYS:
+- Added position_lifecycle.py.
+- Current long entry date is reconstructed first from durable Flex execution history by rebuilding the current open long cycle; if Flex has not yet covered a recent fill, the latest matching automated BUY submission is used as fallback only when a live broker position exists.
+- trading_engine market-data loader now retains completed session dates per symbol.
+- holding_trading_days is recalculated from actual completed session dates, counting the entry session as day 1; weekends/non-trading gaps therefore do not count.
+- Current state repaired from read-only broker evidence: ABNB entry=20260909, holding_trading_days=10 using completed sessions through 20260922; PR entry=20260922/day 1; ALL entry=20260922/day 1.
+- Pure production-data exit check now returns ABNB reason=time_exit_10_trading_days, timing=next_market_open. Therefore the Sep-23 regular cycle should plan the ABNB SELL at the next market open if the broker position is still present.
+
+ROOT CAUSE — TELEGRAM COMPLETION:
+The execution monitor relied mainly on execDetailsEvent from dedicated client 1007, while strategy orders are submitted by a different API client. Cross-client execution events are not guaranteed. In addition, existing paths emitted alerts per individual fill rather than once when the whole broker order was completed.
+
+CORRECTION — TELEGRAM COMPLETION:
+- Added order_completion_alerts.py with durable order-level deduplication.
+- Execution monitor now polls IBKR executions every 5 seconds read-only, so fills from the strategy client are discovered even when no cross-client event is emitted.
+- Partial fills are accumulated by broker order and matched to the persisted automated-order intent; Telegram is emitted only when cumulative filled quantity reaches the intended order quantity.
+- Exactly one Telegram completion message is emitted per completed automated order, including BUY/SELL, total quantity and volume-weighted average fill price.
+- Reconciliation and Flex fallback now use the same order-completion path, preventing per-fill Telegram spam while retaining recovery if the real-time monitor misses a fill.
+- Automated order state is updated to Filled locally when complete broker execution evidence is available; no broker mutation is performed by the monitor.
+
+VALIDATION:
+- New lifecycle/order-completion tests: 2/2 PASS, including two partial fills (40+60) producing zero alert after first fill and exactly one alert after full 100-share completion, with duplicate polling producing no second alert.
+- Core regression suite: 46/46 PASS.
+- ABNB production-data pure check: latest completed session 20260922; holding days=10; time-exit signal generated.
+- Local runtime state repaired using read-only broker snapshot only. No order was placed, modified or cancelled during repair.
+- Restarted tradingbot-controller and tradingbot-execution-monitor only. Telegram listener and IB Gateway remained active; Gateway was not restarted. Execution monitor reconnected successfully in read-only polling mode.

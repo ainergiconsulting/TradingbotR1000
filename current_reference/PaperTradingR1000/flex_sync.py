@@ -9,8 +9,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from flex_execution_ledger import import_flex_xml, mark_execution_notified, observe_execution
-from telegram_alerts import alert_execution_filled
+from flex_execution_ledger import import_flex_xml
+from order_completion_alerts import process_execution
 
 BASE = Path(__file__).resolve().parent
 RAW = BASE / "reports" / "flex_raw"
@@ -43,25 +43,25 @@ def sync() -> dict:
     notified = 0
     for fill in result.get("inserted_rows", []):
         exec_id = str(fill.get("ib_exec_id") or "").strip()
-        if not observe_execution(
-            exec_id,
-            source="FLEX",
+        if process_execution(
+            exec_id=exec_id,
             symbol=str(fill.get("symbol") or ""),
             side=str(fill.get("side") or ""),
             quantity=float(fill.get("quantity") or 0),
             price=float(fill.get("price") or 0),
+            execution_time=str(fill.get("date_time") or ""),
+            flex_order_id=str(fill.get("ib_order_id") or ""),
+            trade_date=str(fill.get("trade_date") or ""),
+            source="FLEX",
         ):
-            continue
-        alert_execution_filled({**fill, "source": "IBKR Flex confirmed execution"})
-        mark_execution_notified(exec_id)
-        notified += 1
+            notified += 1
     return {
         "source_file": after.name,
         "parsed": result["parsed"],
         "inserted": result["inserted"],
         "duplicates": result["duplicates"],
         "total": result["total"],
-        "telegram_fill_notifications": notified,
+        "telegram_order_completion_notifications": notified,
     }
 
 
