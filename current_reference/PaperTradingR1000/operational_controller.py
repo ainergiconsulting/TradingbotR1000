@@ -20,7 +20,7 @@ from heartbeat_utils import write_heartbeat
 from logger_utils import log
 from monitoring_core import write_bot_status
 from monitoring_io import atomic_write_json, utc_timestamp
-from runtime_processes import clear_pid, is_pid_running, process_info, read_pid, write_pid
+from runtime_processes import clear_pid, is_pid_running, pid_matches_command, process_info, read_pid, write_pid
 from runtime_health import HEALTH_OK, HEALTH_STOPPED, write_runtime_health
 from strategy_scheduler import is_cycle_due, is_market_session_day, record_cycle_result, runtime_summary
 from telegram_alerts import (
@@ -83,7 +83,13 @@ def controller_is_running() -> bool:
 
 def another_controller_running() -> bool:
     pid = read_pid(cfg.CONTROLLER_PID_FILE)
-    return bool(pid and pid != os.getpid() and is_pid_running(pid))
+    if not pid or pid == os.getpid():
+        return False
+    if pid_matches_command(pid, "operational_controller.py"):
+        return True
+    # Stale/reused PID: remove only our stale bookkeeping file, never signal pid.
+    clear_pid(cfg.CONTROLLER_PID_FILE, pid)
+    return False
 
 
 def _last_reconciliation_status() -> str:

@@ -389,12 +389,29 @@ async def order_prepare(action: str, order_type: str, symbol: str):
 async def market_hours_all():
     def read(ib):
         result = []
+        # Resolve one trusted IBKR server timestamp for the whole page request.
+        # Repeating reqCurrentTime() per symbol could let one row succeed and the
+        # next row fail transiently, producing contradictory OPEN/UNKNOWN output.
+        server_time = core.get_ibkr_server_time(ib)
         for position in core.get_positions(ib):
             try:
-                status = core.get_market_hours_status(ib, position["contract"])
+                status = core.get_market_hours_status(
+                    ib,
+                    position["contract"],
+                    now=server_time,
+                    time_source="IBKR_SERVER_TIME" if server_time is not None else "UNAVAILABLE",
+                    allow_server_time_lookup=False,
+                )
                 result.append({"symbol": position["symbol"], **status})
             except Exception as exc:
-                result.append({"symbol": position["symbol"], "liquid_open": None, "detail": type(exc).__name__})
+                result.append({
+                    "symbol": position["symbol"],
+                    "known": False,
+                    "trading_open": None,
+                    "liquid_open": None,
+                    "time_source": "UNAVAILABLE",
+                    "detail": type(exc).__name__,
+                })
         return result
     return _plain(await _broker_call(read))
 

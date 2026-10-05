@@ -163,3 +163,10 @@ The Mobile Manual Console no longer keeps an IBKR API socket open while idle. Br
 - The UI exposes confirmed and Pending Flex components separately.
 - Pending API commissions are normalized to the negative-cost convention used by Flex.
 - Combined P&L uses current realized P&L plus live unrealized P&L.
+
+
+## 2026-10-05 — PID reuse hardening and mobile market-hours consistency
+- Controller and health-supervisor singleton checks now validate that a PID belongs to the expected process before treating it as running. Stale PID files whose PID has been reused by another process are cleared without signalling that unrelated process.
+- Recovered controller and health-supervisor from systemd restart storms caused by stale/reused PIDs.
+- Mobile Market/Liquid Hours now obtains one trusted IBKR server timestamp per page request and reuses it for all displayed positions, preventing contradictory per-symbol results caused by repeated server-time lookups.
+- Telegram listener was restarted after repeated network timeouts; IB Gateway was not restarted.

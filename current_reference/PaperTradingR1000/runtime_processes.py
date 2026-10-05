@@ -50,6 +50,29 @@ def is_pid_running(pid: int | str | None) -> bool:
     return True
 
 
+
+def pid_matches_command(pid: int | str | None, expected_substring: str) -> bool:
+    """Return True only if pid is alive and its command line matches expected_substring.
+
+    This prevents a stale PID file from blocking startup after Linux reuses the PID
+    for an unrelated Tradingbot process.
+    """
+    try:
+        value = int(pid or 0)
+    except (TypeError, ValueError):
+        return False
+    if value <= 0 or not is_pid_running(value):
+        return False
+    if os.name == "nt":
+        # Existing Windows callers do not rely on command validation here.
+        return True
+    try:
+        raw = Path(f"/proc/{value}/cmdline").read_bytes()
+        cmdline = raw.replace(b"\x00", b" ").decode("utf-8", errors="replace")
+    except OSError:
+        return False
+    return str(expected_substring or "") in cmdline
+
 def read_pid(path: Path) -> int | None:
     try:
         text = path.read_text(encoding="ascii").strip()
