@@ -11,6 +11,7 @@ from pathlib import Path
 
 from flex_execution_ledger import import_flex_xml
 from order_completion_alerts import process_execution
+from trade_history import refresh_missing_trade_history
 
 BASE = Path(__file__).resolve().parent
 RAW = BASE / "reports" / "flex_raw"
@@ -55,6 +56,16 @@ def sync() -> dict:
             source="FLEX",
         ):
             notified += 1
+    trade_history = {"status": "NOT_RUN", "inserted": 0}
+    try:
+        trade_history = refresh_missing_trade_history()
+    except Exception as exc:
+        # Descriptive history must never make Flex sync or trading fail.
+        trade_history = {
+            "status": "ERROR",
+            "inserted": 0,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
     return {
         "source_file": after.name,
         "parsed": result["parsed"],
@@ -62,6 +73,7 @@ def sync() -> dict:
         "duplicates": result["duplicates"],
         "total": result["total"],
         "telegram_order_completion_notifications": notified,
+        "trade_history": trade_history,
     }
 
 

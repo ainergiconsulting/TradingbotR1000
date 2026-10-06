@@ -1193,3 +1193,49 @@ LIVE VALIDATION:
 - Weekly maintenance timer remains enabled/active; next run Sun 2026-10-11 08:00 UTC, corresponding to 04:00 America/New_York while EDT is active.
 - Midweek safeguards reverified: APT unattended-upgrade=0; apt-daily-upgrade.timer masked/inactive; needrestart restart mode list-only.
 - Deploy copies updated, including an exact tradingbot-health-supervisor.service copy; maintenance policy documentation updated.
+
+
+[2026-10-06] WEEKLY-REBOOT / RESTART-STORM HARDENING AUDIT
+User requested a detailed review of Master History and prior operational failures before any further correction, with the explicit goal of avoiding regressions in known weekly events (Ubuntu maintenance, IBKR weekend reset, Gateway reauthentication, market-data refresh, fail-closed behavior, Telegram alerting).
+
+CORRECTED ROOT-CAUSE CONCLUSION:
+A prior conversational hypothesis suggested duplicate startup paths. Detailed audit of Master History, boot logs, PID logic and current deployment shows the proven Oct-04 restart storm root cause was stale persistent PID bookkeeping surviving/reappearing across the controlled reboot and then colliding with Linux PID reuse. The pre-fix singleton logic treated an unrelated reused PID as proof that controller/supervisor was already running. systemd Restart=on-failure then retried every 5 seconds. This produced the historical >21k controller and >20k health-supervisor restart counters. Those counters are historical for the current boot; since 2026-10-05 15:38:52 UTC both real processes have remained continuously active with stable PIDs and no further restart loop.
+
+KNOWN WEEKLY FAILURE MODES REVIEWED:
+- Sep-02 unattended Ubuntu upgrade indirectly stopped IB Gateway through the Xvfb dependency chain. Weekday unattended package installation remains disabled; apt-daily-upgrade remains masked; needrestart remains list-only outside explicit maintenance.
+- Weekly controlled maintenance remains Sunday 04:00 America/New_York, three hours after the documented 01:00 ET IBKR authentication-token reset, preserving DST handling.
+- Maintenance intentionally stops controller and health supervisor, verifies both inactive, deletes operational_controller.pid and health_supervisor.pid, performs package maintenance in NEEDRESTART_MODE=l, then reboots.
+- After reboot, enabled services restart normally; trading remains fail-closed while Gateway/API/reconciliation are unavailable and manual IBKR reauthentication may still be required.
+- Persistent API TimeoutError after the IBKR weekend reset is independently promoted to DEGRADED after three failures and alerts once; hard disconnect and recovery alerts remain separate.
+- Long market-data refresh keeps controller heartbeat alive; post-IWB-universe refresh immediately refreshes daily bars so Monday trading is not blocked by newly introduced symbols.
+
+CURRENT HARDENING VERIFIED:
+- runtime_processes.pid_matches_command validates /proc/<pid>/cmdline before treating a PID file as a live controller/supervisor; unrelated reused PIDs are cleared without signalling that process.
+- Both live systemd units now contain StartLimitIntervalSec=300, StartLimitBurst=5, RestartPreventExitStatus=10, Restart=on-failure, RestartSec=5. Therefore duplicate-instance exit code 10 is explicitly non-restartable and a future unexpected crash storm is rate-limited.
+- Live controller service, health-supervisor service and weekly-maintenance script are byte-for-byte identical to their versioned deploy copies after reconciling deploy/systemd/tradingbot-supervisor.service to the live dependency ordering.
+- Weekly maintenance DRY_RUN completed without changing service state. Controller, health supervisor, Gateway, Telegram, execution monitor and Mobile Console all remained active.
+- Current health status OK: heartbeat fresh, IBKR CONNECTED, Gateway RUNNING, API socket CONNECTED, consecutive API failures 0.
+- Added regression coverage asserting stale-PID command validation, systemd RestartPreventExitStatus/start-limit hardening, and weekly-maintenance stop/remove-PID safeguards. Focused runtime/health suite: 14/14 PASS.
+- No IB Gateway restart, service restart, broker mutation or live trading action was performed during this audit.
+
+
+[2026-10-06] MOBILE TRADE HISTORY — DESCRIPTIVE ONLY
+User requested a permanent Mobile Console history of what the production PAPER bot actually did, explicitly excluding stop-loss/trailing-stop research and all hypothetical simulations. The Trade History must remain observational and must not alter strategy, broker orders, allocation, exits, Telegram or any safety gate.
+
+IMPLEMENTATION:
+- Added durable trade_history table inside reports/execution_history.sqlite3, one row per completed long trade.
+- Source of truth for executions/P&L: IBKR Flex-confirmed BUY/SELL fills.
+- Price-path evidence: IBKR RTH 1-minute historical bars restricted to the actual holding interval (first BUY fill minute through final SELL fill minute).
+- Stored/displayed fields: ticker, quantity, first/last BUY fill date/time, BUY VWAP, minimum price and timestamp, MAE absolute per share and %, maximum price and timestamp, MFE absolute per share and %, first/last SELL fill date/time, SELL VWAP, realized P&L USD and %, BUY/SELL/total commissions, calendar days, trading sessions, recorded exit reason, RSI(2) at the last completed daily session before entry and before exit, and data-quality marker.
+- RSI is descriptive only. It is not recalculated intraday and is labelled in the UI as prior-completed-session RSI(2).
+- Added Mobile API GET /api/trade-history and Mobile PWA menu item 16 "Trade History".
+- The page explicitly states that it contains completed trades only and no simulations/research scenarios.
+- Future maintenance: flex_sync calls refresh_missing_trade_history after successful Flex import. The helper first checks whether any newly closed trade is missing; if none, it opens no IBKR connection. If a new closed trade exists, it uses short-lived read-only IBKR client ID 1008 only to fetch historical 1-minute bars, then disconnects. Any Trade History refresh failure is caught and reported in the Flex result and cannot fail Flex sync or trading.
+- No persistent additional IBKR client was introduced.
+
+BACKFILL / VALIDATION:
+- Backfilled all 7 Flex-confirmed closed trades: ETSY, RHI, BRKR, ABNB, CDW, CHYM, PR.
+- Exit reasons recovered from the durable automated-order store: RSI-cross exits for ETSY/RHI/BRKR/CDW/CHYM/PR; 10-trading-day time exit for ABNB.
+- Direct API returns 7 trades and research_or_simulation=false.
+- Targeted regression suite: 19/19 PASS (Trade History, mobile schema, order completion/holding, Telegram alerts, runtime restart hardening).
+- No strategy code, order submission code or IB Gateway service was changed/restarted for this feature.

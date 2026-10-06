@@ -20,6 +20,7 @@ import mobile_auth as auth
 from live_account import collect_live_account_context
 from flex_execution_ledger import latest as ledger_latest, order_history as ledger_order_history, pnl_summary as ledger_pnl_summary
 from candidate_history import recent_candidate_history
+from trade_history import list_trade_history
 from mobile_r1000_selector import get_r1000_symbol, load_r1000_universe, search_r1000
 
 BASE = Path(__file__).resolve().parent
@@ -300,6 +301,15 @@ def pnl():
     return _plain(result)
 
 
+@app.get("/api/trade-history")
+def trade_history(
+    limit: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    # Descriptive completed-trade history only. No simulations or strategy research.
+    return _plain(list_trade_history(limit=limit, offset=offset))
+
+
 @app.get("/api/candidate-history")
 def candidate_history(days: int = Query(15, ge=1, le=90)):
     snapshots = recent_candidate_history(days=days)
@@ -447,6 +457,7 @@ def mobile_capabilities():
         "market_liquid_hours": True,
         "investable_capital_control": "READ_ONLY",
         "execution_history": True,
+        "trade_history": True,
         "broker_mutations": MUTATIONS_ENABLED,
     }
 

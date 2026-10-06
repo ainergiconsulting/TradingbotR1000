@@ -1,4 +1,4 @@
-const CACHE_VERSION = "tradingbot-r1000-20260916g4";
+const CACHE_VERSION = "tradingbot-r1000-20261006tradehistory1";
 self.addEventListener("install", event => { self.skipWaiting(); });
 self.addEventListener("activate", event => {
   event.waitUntil((async () => {

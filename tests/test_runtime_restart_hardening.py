@@ -90,5 +90,42 @@ class RuntimeRestartHardeningTests(unittest.TestCase):
         self.assertIn("market_data_refresh_complete", events)
 
 
+class WeeklyMaintenanceHardeningTests(unittest.TestCase):
+    def test_health_supervisor_validates_pid_command_before_duplicate_exit(self):
+        root = Path(__file__).resolve().parents[1]
+        source = (
+            root / "current_reference" / "PaperTradingR1000" / "health_supervisor.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('pid_matches_command(status["pid"], "health_supervisor.py")', source)
+        self.assertIn('clear_pid(cfg.SUPERVISOR_PID_FILE, status["pid"])', source)
+
+    def test_deployed_systemd_units_prevent_restart_storm_on_duplicate_exit(self):
+        root = Path(__file__).resolve().parents[1]
+        controller = (
+            root / "deploy" / "systemd" / "tradingbot-controller.service"
+        ).read_text(encoding="utf-8")
+        supervisor = (
+            root / "deploy" / "systemd" / "tradingbot-supervisor.service"
+        ).read_text(encoding="utf-8")
+        for unit in (controller, supervisor):
+            self.assertIn("RestartPreventExitStatus=10", unit)
+            self.assertIn("StartLimitIntervalSec=300", unit)
+            self.assertIn("StartLimitBurst=5", unit)
+
+    def test_weekly_maintenance_stops_both_pid_owners_and_removes_pid_files(self):
+        root = Path(__file__).resolve().parents[1]
+        script = (
+            root / "deploy" / "maintenance" / "weekly_maintenance.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "systemctl stop tradingbot-controller.service tradingbot-health-supervisor.service",
+            script,
+        )
+        self.assertIn("operational_controller.pid", script)
+        self.assertIn("health_supervisor.pid", script)
+        self.assertIn("NEEDRESTART_MODE=l", script)
+        self.assertIn("systemctl reboot", script)
+
+
 if __name__ == "__main__":
     unittest.main()

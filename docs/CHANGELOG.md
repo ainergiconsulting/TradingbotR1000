@@ -178,3 +178,21 @@ The Mobile Manual Console no longer keeps an IBKR API socket open while idle. Br
 - Active systemd units now use `RestartPreventExitStatus=10` and a 5-restarts/300-second start limit, preventing any ALREADY_RUNNING or other crash condition from generating an unbounded restart storm.
 - Weekly maintenance now stops both controller and health supervisor, verifies both are inactive, then removes only their stale PID bookkeeping before package work/reboot; maintenance aborts if either service cannot stop cleanly.
 - Existing weekly IBKR authentication timing, fail-closed post-reboot behavior, midweek APT/needrestart protections, controller API retry cooldown, health alerts, and trading safety gates are unchanged.
+
+
+## 2026-10-06 — Weekly reboot / PID restart-storm hardening audit
+- Revalidated the Oct-04/05 restart storm against Master History and boot evidence. Proven trigger: stale persistent controller/supervisor PID bookkeeping combined with Linux PID reuse after the controlled reboot; not a random runtime corruption.
+- Controller and supervisor validate the command line of the PID before accepting a PID file as a live duplicate; unrelated reused PIDs are cleared without signalling the unrelated process.
+- systemd controller and health-supervisor units now explicitly use RestartPreventExitStatus=10 plus StartLimitIntervalSec=300 / StartLimitBurst=5, preventing duplicate-instance exit code 10 from becoming a restart storm and rate-limiting unexpected crash loops.
+- Weekly maintenance stops both PID-owning services, verifies them inactive and deletes both PID files before package maintenance/reboot.
+- Versioned deploy copies were reconciled byte-for-byte with the live controller/supervisor units and weekly-maintenance script.
+- Added regression assertions for PID reuse, systemd restart-storm prevention and weekly-maintenance PID cleanup. Focused runtime/health suite: 14/14 PASS.
+- Maintenance DRY_RUN left controller, health supervisor, IB Gateway, Telegram, execution monitor and Mobile Console active; no Gateway restart or broker mutation occurred.
+
+
+## 2026-10-06 — Mobile Trade History
+- Added a descriptive-only completed-trade ledger and Mobile Console view. No strategy research or hypothetical stop logic is included.
+- Each completed trade records BUY/SELL VWAP and fill times, quantity, min/max with timestamps, MAE/MFE absolute per share and %, realized P&L USD and %, commissions, duration, exit reason, and prior-completed-session RSI(2) at entry/exit.
+- Flex-confirmed executions are the accounting source; IBKR RTH 1-minute historical bars provide the held-period price path.
+- Future Flex sync runs backfill only newly closed trades. Historical-bar retrieval uses short-lived read-only client ID 1008 only when needed and never keeps a persistent extra IBKR client open.
+- Trade History failures are isolated from Flex sync/trading and cannot block trading.

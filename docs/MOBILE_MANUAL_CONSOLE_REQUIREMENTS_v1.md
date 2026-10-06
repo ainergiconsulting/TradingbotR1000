@@ -224,3 +224,11 @@ The requirement that every actual broker execution be reported on Telegram is im
 - Additional candidates are informational only: they never create orders, reserve slots, consume capital, or alter strategy state.
 - The server-side JSONL archive has no automatic deletion; 15 days is only the mobile display window.
 - Telegram behavior is intentionally unchanged.
+
+
+## Trade History
+- Provide a read-only Trade History for completed bot trades only; do not mix research simulations or hypothetical strategies into this view.
+- Required fields: ticker, quantity, BUY first/last fill timestamp and VWAP, minimum price/time, MAE absolute and %, maximum price/time, MFE absolute and %, SELL first/last fill timestamp and VWAP, realized P&L USD and %, commissions, calendar/trading-session duration, exit reason.
+- RSI(2) entry/exit may be shown only as descriptive context and must be labelled as the value from the prior completed daily session.
+- Historical records must be durable and retained without automatic expiry.
+- Trade History must not change broker orders, strategy decisions, capital allocation, Telegram behavior, or safety gates.
