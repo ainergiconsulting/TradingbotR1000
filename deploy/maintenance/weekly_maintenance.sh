@@ -29,7 +29,19 @@ fi
 
 log_history "START at $STAMP. Trading controller will stop; Ubuntu packages will be updated in controlled maintenance; server will reboot afterward. IB Gateway authentication may require user action after reboot."
 
-systemctl stop tradingbot-controller.service || true
+# Stop both long-lived processes that maintain persistent PID bookkeeping.
+# This gives them a clean shutdown before the deliberate reboot. If either
+# refuses to stop, abort maintenance rather than upgrading around a live bot.
+systemctl stop tradingbot-controller.service tradingbot-health-supervisor.service || true
+if systemctl is-active --quiet tradingbot-controller.service || systemctl is-active --quiet tradingbot-health-supervisor.service; then
+  log_history "ABORTED because controller or health supervisor did not stop cleanly."
+  exit 3
+fi
+
+# Services are confirmed inactive, so persistent PID bookkeeping cannot refer
+# to a live controller/supervisor. Remove any residue before the reboot.
+rm -f "$ROOT/current_reference/PaperTradingR1000/state/operational_controller.pid"
+rm -f "$ROOT/current_reference/PaperTradingR1000/state/health_supervisor.pid"
 
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=l

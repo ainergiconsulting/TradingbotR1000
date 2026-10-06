@@ -1158,3 +1158,38 @@ POST-REPAIR STATE:
 - Controller performed a catch-up regular scan at 2026-10-05T15:39:29Z after recovery and submitted two PAPER orders (INCY and JNJ), with no rejected orders. A scan_completed alert evidence file was created at 15:39:34Z.
 - Targeted mobile market-hours / gateway health / automated workflow suite: 15/15 PASS after correction.
 - One older Telegram monitoring test remains state-sensitive when a legitimate current preview exists; this was observed before and is unrelated to this repair.
+
+
+[2026-10-06] RESTART-STORM ROOT CAUSE REVIEW + WEEKLY MAINTENANCE HARDENING
+User explicitly requested that the Oct-04/05 controller/health-supervisor restart storm be corrected only after detailed review of Master History and prior failure modes, with emphasis on preserving all already-known weekly safeguards.
+
+DETAILED HISTORY REVIEW / CORRECTED ROOT CAUSE:
+- The earlier provisional explanation of “two simultaneous startup mechanisms” was too broad. Master History and the Oct-04 boot evidence identify the precise cause as stale persistent PID bookkeeping combined with Linux PID reuse after the scheduled reboot.
+- The Oct-04 weekly maintenance ran at 08:00 UTC (04:00 America/New_York, as designed) and deliberately rebooted the server. At boot, old PID files still contained numeric PIDs from the previous boot. Linux reused at least one such PID for an unrelated process (documented example: PID 839 reused by telegram_listener.py; boot journal also showed stale-PID blocking signatures). Older singleton logic treated “PID exists” as sufficient proof that controller/supervisor was already running.
+- The service instance therefore exited with status 10 (“ALREADY_RUNNING”). Because both systemd units had Restart=on-failure and RestartSec=5 with no restart cap or excluded status, systemd retried indefinitely, producing >21,000 controller and >20,000 health-supervisor restarts.
+- This was not spontaneous corruption of strategy state, not an IBKR competing-session event, and not caused by the user touching the bot. It was a deterministic reboot/startup bookkeeping defect exposed by the scheduled weekly maintenance.
+
+PRIOR WEEKLY/MIDWEEK FAILURE MODES PRESERVED IN THE FIX:
+- Sep-02 unattended-upgrade incident: unattended package installation remains disabled; apt-daily-upgrade.timer remains masked; needrestart remains list-only so package work cannot unexpectedly restart Gateway/Xvfb during the trading week.
+- Weekly IBKR reset/authentication behavior: maintenance remains scheduled Sunday 04:00 America/New_York, preserving the established three-hour margin after the documented weekly token reset and following DST automatically.
+- Post-reboot IBKR authentication: trading remains fail-closed until Gateway API/reconciliation recover; this hardening does not bypass authentication or force orders.
+- Engine/API transient failures: controller RETRY_COOLDOWN behavior remains unchanged, so normal IBKR/API outages do not cause controller process restart loops.
+- Long market-data refresh heartbeat fix, health DEGRADED/DISCONNECTED alert logic, strategy-cycle watchdog, no-leverage budget guard, execution-monitor fill handling, and Mobile Console behavior were not altered.
+- Legacy tradingbot-supervisor.service is disabled/inactive and tradingbot-controller-resume.timer is disabled/inactive; no active duplicate launcher was found.
+
+HARDENING APPLIED:
+1) Existing Oct-05 runtime PID fix retained: singleton checks validate both that the PID exists and that /proc/<pid>/cmdline matches the expected controller/supervisor script. A stale PID reused by another process is cleared without signalling that unrelated process.
+2) Added explicit regression coverage for unrelated PID reuse, positive command matching, and stale controller PID cleanup. Focused runtime+health tests pass; a separate pre-existing Telegram status test remains state-sensitive when a legitimate current preview exists and is unrelated to this change.
+3) Added systemd second-line defense to both active units: RestartPreventExitStatus=10. A legitimate ALREADY_RUNNING result can therefore never trigger an automatic restart storm.
+4) Added StartLimitIntervalSec=300 and StartLimitBurst=5 to both active units. Any other unexpected crash loop is bounded instead of being allowed to run indefinitely.
+5) Hardened weekly maintenance: it now stops BOTH controller and health supervisor before package work, verifies both are actually inactive, aborts maintenance if either did not stop cleanly, and only after that removes their PID bookkeeping files. This is safe because files are removed only after the corresponding processes are confirmed inactive.
+6) Installed the hardened unit definitions and maintenance script, then ran systemctl daemon-reload ONLY. Controller and health supervisor were NOT restarted; their PIDs remained unchanged. IB Gateway, Telegram, execution monitor and Mobile Console were not restarted.
+
+LIVE VALIDATION:
+- Controller PID unchanged across deployment; health-supervisor PID unchanged.
+- controller/health/Gateway/Telegram/execution-monitor/mobile-console all ACTIVE.
+- Restart counters remained unchanged during observation after daemon-reload.
+- Effective systemd RestartPreventExitStatus=10 and StartLimitBurst=5 verified for both controller and health-supervisor.
+- Weekly maintenance timer remains enabled/active; next run Sun 2026-10-11 08:00 UTC, corresponding to 04:00 America/New_York while EDT is active.
+- Midweek safeguards reverified: APT unattended-upgrade=0; apt-daily-upgrade.timer masked/inactive; needrestart restart mode list-only.
+- Deploy copies updated, including an exact tradingbot-health-supervisor.service copy; maintenance policy documentation updated.

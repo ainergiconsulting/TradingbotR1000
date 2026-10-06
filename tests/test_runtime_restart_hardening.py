@@ -46,6 +46,30 @@ class RuntimeRestartHardeningTests(unittest.TestCase):
         with patch("runtime_processes.os.kill", side_effect=ProcessLookupError):
             self.assertFalse(runtime_processes.is_pid_running(12345))
 
+    def test_reused_pid_for_unrelated_process_does_not_match_controller(self):
+        with patch("runtime_processes.is_pid_running", return_value=True), patch(
+            "runtime_processes.Path.read_bytes",
+            return_value=b"python3\\x00telegram_listener.py\\x00",
+        ):
+            self.assertFalse(runtime_processes.pid_matches_command(851, "operational_controller.py"))
+
+    def test_matching_controller_pid_is_recognized(self):
+        with patch("runtime_processes.is_pid_running", return_value=True), patch(
+            "runtime_processes.Path.read_bytes",
+            return_value=b"python3\\x00operational_controller.py\\x00",
+        ):
+            self.assertTrue(runtime_processes.pid_matches_command(851, "operational_controller.py"))
+
+    def test_controller_clears_reused_stale_pid_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = Path(directory) / "controller.pid"
+            pid_file.write_text("851", encoding="ascii")
+            with patch.object(operational_controller.cfg, "CONTROLLER_PID_FILE", pid_file), patch.object(
+                operational_controller, "pid_matches_command", return_value=False
+            ):
+                self.assertFalse(operational_controller.another_controller_running())
+            self.assertFalse(pid_file.exists())
+
     def test_market_data_refresh_keeps_controller_heartbeat_alive(self):
         class Completed:
             returncode = 0

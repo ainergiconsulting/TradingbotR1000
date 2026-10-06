@@ -294,3 +294,11 @@ The production scan persists a durable informational history of BUY candidates. 
 - Recovered controller and health-supervisor from systemd restart storms caused by stale/reused PIDs.
 - Mobile Market/Liquid Hours now obtains one trusted IBKR server timestamp per page request and reuses it for all displayed positions, preventing contradictory per-symbol results caused by repeated server-time lookups.
 - Telegram listener was restarted after repeated network timeouts; IB Gateway was not restarted.
+
+
+## 2026-10-06 — Weekly reboot/startup hardening
+- Corrected the Oct-04 restart-storm diagnosis to the precise failure mode: stale persistent PID files plus Linux PID reuse after the scheduled reboot; no active duplicate launcher was found.
+- Controller and health-supervisor singleton checks retain command-line validation for stale/reused PIDs.
+- Active systemd units now use `RestartPreventExitStatus=10` and a 5-restarts/300-second start limit, preventing any ALREADY_RUNNING or other crash condition from generating an unbounded restart storm.
+- Weekly maintenance now stops both controller and health supervisor, verifies both are inactive, then removes only their stale PID bookkeeping before package work/reboot; maintenance aborts if either service cannot stop cleanly.
+- Existing weekly IBKR authentication timing, fail-closed post-reboot behavior, midweek APT/needrestart protections, controller API retry cooldown, health alerts, and trading safety gates are unchanged.
