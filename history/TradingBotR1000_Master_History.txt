@@ -1283,3 +1283,11 @@ TELEGRAM /status DEFECT FOUND:
 DOCUMENTATION CONSOLIDATION:
 - Operating Manual, Current State Audit, Project Specification and Changelog updated to state post-close preview/status precedence explicitly.
 - PC Manual Console Sep-24 lifecycle/execution-history changes remain included in this consolidation.
+
+
+[2026-10-09] PAPER CONSOLIDATION COMPLETED
+- Consolidated PAPER/Manual Console/post-close status documentation and code in Git commit 3825efb (Consolidate manual console and post-close status).
+- Commit pushed successfully to origin/main; local main and origin/main were aligned immediately after the push.
+- Focused validation before commit: 14/14 PASS; Python compilation and git diff checks passed.
+- Restarted only tradingbot-telegram.service so the corrected /status precedence is active in the running listener. Service returned ACTIVE/RUNNING. Controller, IB Gateway, execution monitor and Mobile Console were not restarted by this consolidation.
+- LiveTradingR1000, the Live go-live runbook, current IWB holdings refresh and Live-specific .gitignore work remain outside this PAPER commit. They were deliberately not mixed into the PAPER consolidation and require their own review/secret audit before versioning.
