@@ -63,3 +63,32 @@ First-three-session automated PAPER quality reports are written to
 
 ### IBKR health state and alerts
 The independent health supervisor treats a fresh controller heartbeat and a healthy IBKR API as separate requirements. `OK` requires both a fresh heartbeat and an IBKR `CONNECTED` state. A single/transient API probe failure is reported as `UNKNOWN`; after 3 consecutive transient failures the state becomes `DEGRADED` and one Telegram `ibkr_degraded` alert is sent. A hard socket/Gateway failure is `DISCONNECTED` and sends `ibkr_disconnected`. Recovery from `DEGRADED` or `DISCONNECTED` sends `ibkr_reconnected`. `DEGRADED` and `DISCONNECTED` are operationally fail-closed for trading.
+
+
+### PC Manual Console session safety and execution history
+
+The PC Manual Console permits only one active console session at a time. A newly
+opened console may replace an older console only when the older session is
+waiting at the menu; it will not terminate a console while an action is being
+processed. Menu inactivity closes the PC console after 10 minutes and disconnects
+the manual IBKR session cleanly.
+
+Option 14, **Latest Broker Execution History**, is broker-ledger based. It shows
+Flex-confirmed fills together with IBKR API fills that are still awaiting Flex
+confirmation, and labels those sources separately. This view is observational;
+it does not create, cancel, or modify broker orders.
+
+
+### Post-close strategy plan and Telegram status precedence
+
+Entry conditions are determined from completed daily bars. After the 16:30 ET
+post-close refresh has successfully obtained the just-completed US session, the
+read-only next-session preview is the current strategy plan for status/reporting
+purposes.
+
+If a saved regular scan belongs to the just-finished ET trading date and a newer
+post-close preview targets a later eligible ET session, Telegram `/status`
+must display the newer preview, not the older regular-scan plan. The preview is
+still non-submitting: actual broker transmission remains in the unchanged
+09:28/09:30 regular execution path, which refreshes broker/account safety state
+again before transmitting any order.

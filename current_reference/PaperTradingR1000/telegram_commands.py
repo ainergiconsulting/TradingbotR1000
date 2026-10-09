@@ -59,16 +59,30 @@ def render_status() -> str:
         preview_target_et
         and preview_target_et >= today_et
     )
-    if not scan_is_current and preview_is_current:
+
+    # Signals are established from the completed session close. Once the
+    # post-close preview for a later trading session exists, it supersedes the
+    # same-calendar-day regular scan for operational status. Otherwise /status
+    # would keep showing yesterday's execution plan until midnight ET even
+    # though the next-session plan had already been determined after the close.
+    use_preview = bool(
+        preview_is_current
+        and preview_target_et
+        and (not scan_date_et or preview_target_et > scan_date_et)
+    )
+    use_scan = bool(scan_is_current and not use_preview)
+
+    if use_preview:
         buy_plans = list(preview.get("order_plans", []) or [])
         sell_plans = list(preview.get("sell_order_plans", []) or [])
 
-    valid_plans = list(buy_plans) if (scan_is_current or preview_is_current) else []
-    stale_buy_plans = [] if (scan_is_current or preview_is_current) else list(buy_plans)
+    current_plan_available = use_scan or use_preview
+    valid_plans = list(buy_plans) if current_plan_available else []
+    stale_buy_plans = [] if current_plan_available else list(buy_plans)
     stale_sell_plans = []
     for row in sell_plans:
         symbol = str(row.get("symbol") or "").upper()
-        if (scan_is_current or preview_is_current) and live_positions.get(symbol, 0.0) > 0:
+        if current_plan_available and live_positions.get(symbol, 0.0) > 0:
             valid_plans.append(row)
         else:
             stale_sell_plans.append(row)
@@ -77,13 +91,13 @@ def render_status() -> str:
         f"{cfg.BOT_NAME} status",
         f"Engine: {health.get('strategy_engine_state', 'not checked')}",
     ]
-    if scan_is_current:
+    if use_scan:
         lines.extend([
             f"Today's scan: {scan.get('timestamp_utc', 'none')}",
             f"Selected today: {len(scan.get('selected_candidates', []))}",
             f"Orders currently valid: {len(valid_plans)}",
         ])
-    elif preview_is_current:
+    elif use_preview:
         lines.extend([
             f"Next-session plan: READY at {preview.get('preview_created_at_utc', 'unknown')}",
             f"For session ET: {preview.get('preview_trade_date_et', 'unknown')}",
@@ -103,7 +117,7 @@ def render_status() -> str:
     if valid_plans:
         lines.extend([
             "",
-            "PLANNED / CURRENTLY VALID:" if scan_is_current else "PLANNED / NOT YET SUBMITTED:",
+            "PLANNED / CURRENTLY VALID:" if use_scan else "PLANNED / NOT YET SUBMITTED:",
         ])
         for row in valid_plans:
             is_sell = row in sell_plans
@@ -125,7 +139,7 @@ def render_status() -> str:
     # Previous-day plans are historical evidence, not operational status.
     # Do not show them in /status. A same-day SELL that is no longer covered
     # remains visible as BLOCKED because it is a current-cycle safety event.
-    current_blocked_sells = stale_sell_plans if scan_is_current else []
+    current_blocked_sells = stale_sell_plans if use_scan else []
     if current_blocked_sells:
         lines.extend(["", "BLOCKED:"])
         for row in current_blocked_sells:

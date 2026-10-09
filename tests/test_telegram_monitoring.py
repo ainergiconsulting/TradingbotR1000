@@ -73,7 +73,10 @@ class TelegramMonitoringTests(unittest.TestCase):
             def fromisoformat(cls, value):
                 from datetime import datetime as real_datetime
                 return real_datetime.fromisoformat(value)
-        with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status),              patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot),              patch.object(telegram_commands, "datetime", FakeDateTime):
+        with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status), \
+             patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot), \
+             patch.object(telegram_commands, "read_json", return_value={}), \
+             patch.object(telegram_commands, "datetime", FakeDateTime):
             text = telegram_commands.render_status()
         self.assertIn("Next-session plan: PENDING", text)
         self.assertIn("Selected today: N/A (not evaluated yet)", text)
@@ -156,3 +159,71 @@ class TelegramPreviewMonitoringTests(unittest.TestCase):
         self.assertIn("BUY AAA | qty 100 | LIMIT @ $97.00", text)
         self.assertIn("BUY BBB | qty 100 | LIMIT @ $48.50", text)
         self.assertIn("PLANNED / NOT YET SUBMITTED:", text)
+
+
+class TelegramPostClosePrecedenceTests(unittest.TestCase):
+    def test_post_close_next_session_preview_supersedes_same_day_regular_scan(self):
+        fake_status = {
+            "runtime_health": {"strategy_engine_state": "IDLE"},
+            "scan_report": {
+                "timestamp_utc": "2026-10-06T13:29:11Z",
+                "selected_candidates": [
+                    {"symbol": "JNJ"}, {"symbol": "MRK"}, {"symbol": "RHI"}
+                ],
+                "order_plans": [
+                    {"symbol": "JNJ", "side": "BUY", "order_type": "LIMIT", "allocation_value": 151939.6461, "limit_price": 245.34},
+                    {"symbol": "MRK", "side": "BUY", "order_type": "LIMIT", "allocation_value": 151939.6461, "limit_price": 135.35},
+                    {"symbol": "RHI", "side": "BUY", "order_type": "LIMIT", "allocation_value": 151939.6461, "limit_price": 33.29},
+                ],
+                "sell_order_plans": [],
+            },
+        }
+        fake_preview = {
+            "preview_trade_date_et": "2026-10-07",
+            "preview_created_at_utc": "2026-10-06T21:33:27Z",
+            "market_data_latest_date": "20261006",
+            "selected_candidates": [{"symbol": "RHI"}],
+            "order_plans": [
+                {"symbol": "RHI", "side": "BUY", "order_type": "LIMIT", "allocation_value": 202866.96474, "limit_price": 32.66}
+            ],
+            "sell_order_plans": [],
+        }
+        fake_snapshot = {
+            "account_values": {
+                "net_liquidation": 1024822.47,
+                "cash": 1024679.74,
+                "available_funds": 1024679.74,
+                "lookahead_available_funds": 1024679.74,
+                "buying_power": 4098718.98,
+            },
+            "positions": [],
+            "open_orders": [],
+            "account_mode": "PAPER",
+        }
+
+        class FakeDateTime:
+            @classmethod
+            def now(cls, tz=None):
+                from datetime import datetime as real_datetime, timezone
+                return real_datetime(2026, 10, 6, 22, 42, tzinfo=timezone.utc)
+
+            @classmethod
+            def fromisoformat(cls, value):
+                from datetime import datetime as real_datetime
+                return real_datetime.fromisoformat(value)
+
+        with patch.object(telegram_commands, "collect_runtime_status", return_value=fake_status), \
+             patch.object(telegram_commands, "collect_live_account_context", return_value=fake_snapshot), \
+             patch.object(telegram_commands, "read_json", return_value=fake_preview), \
+             patch.object(telegram_commands, "datetime", FakeDateTime):
+            text = telegram_commands.render_status()
+
+        self.assertIn("Next-session plan: READY", text)
+        self.assertIn("For session ET: 2026-10-07", text)
+        self.assertIn("Signal session: 20261006", text)
+        self.assertIn("Selected today: 1", text)
+        self.assertIn("BUY RHI", text)
+        self.assertIn("$32.66", text)
+        self.assertNotIn("BUY JNJ", text)
+        self.assertNotIn("BUY MRK", text)
+        self.assertNotIn("PLANNED / CURRENTLY VALID:", text)

@@ -302,3 +302,15 @@ The production scan persists a durable informational history of BUY candidates. 
 - Active systemd units now use `RestartPreventExitStatus=10` and a 5-restarts/300-second start limit, preventing any ALREADY_RUNNING or other crash condition from generating an unbounded restart storm.
 - Weekly maintenance now stops both controller and health supervisor, verifies both are inactive, then removes only their stale PID bookkeeping before package work/reboot; maintenance aborts if either service cannot stop cleanly.
 - Existing weekly IBKR authentication timing, fail-closed post-reboot behavior, midweek APT/needrestart protections, controller API retry cooldown, health alerts, and trading safety gates are unchanged.
+
+
+### Operator-status precedence after market close
+
+Because entry signals are defined on completed daily closes, once the
+post-close evaluation for the next eligible session has completed successfully,
+that next-session preview is authoritative for operator-facing plan/status
+display. A saved regular scan from the just-finished ET session must not remain
+labelled as the currently valid plan after a newer preview targets a later ET
+session. This is a display/status precedence rule only; the unchanged 09:28
+regular cycle and 09:30 broker-safety/transmission path remain authoritative for
+actual order submission.

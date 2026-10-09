@@ -68,6 +68,7 @@ except ImportError:
 
     def format_execution_history_lines(rows: list[dict], metadata: dict) -> list[str]:
         return format_latest_execution_history_lines(rows, metadata)
+from execution_history import load_broker_execution_history
 from ibkr_utils import (
     IBKR_BLOCKING_REQUEST_TIMEOUT_SECONDS,
     MARKET_HOURS_TIME_UNAVAILABLE_REASON,
@@ -85,6 +86,7 @@ from investable_capital_control import (
     set_manual as set_manual_investable_capital,
 )
 from order_safety import LongOnlyOrderRejected, acquire_order_intent_guard
+from manual_console_lifecycle import ConsoleSession
 
 MOBILE_REQUEST_STATE_FILE = Path(cfg.BASE_DIR) / "state" / "mobile_manual_requests.json"
 _mobile_request_lock = threading.RLock()
@@ -1895,8 +1897,20 @@ def print_execution_history_since_baseline(rows: list[dict], metadata: dict) -> 
 
 def print_latest_execution_history(rows: list[dict], metadata: dict) -> None:
     print("Latest Broker Execution History")
-    for line in format_latest_execution_history_lines(rows, metadata):
-        print(line)
+    print(
+        f"Rows shown: {len(rows)} of {metadata['total_rows']} broker fills "
+        f"({metadata['confirmed_rows']} Flex confirmed, "
+        f"{metadata['pending_rows']} awaiting Flex)"
+    )
+    if not rows:
+        print("No broker executions are available in the local ledger.")
+        return
+    print("Time | Symbol | Side | Qty | Price | Source")
+    for row in rows:
+        print(
+            f"{row['time'] or '-'} | {row['symbol']} | {row['side']} | "
+            f"{row['quantity']:g} | {row['price']:g} | {row['source']}"
+        )
 
 
 def export_recent_executions_csv(rows: list[dict]) -> Path:
@@ -2419,7 +2433,7 @@ def execute_menu_choice(ib: IB, choice: str) -> bool:
         run_investable_capital_control(ib)
     elif choice == "14":
         count = int(input("How many executions [20]: ").strip() or "20")
-        rows, metadata = load_latest_execution_history(count)
+        rows, metadata = load_broker_execution_history(count)
         print_latest_execution_history(rows, metadata)
     else:
         print("Unknown menu option.")
@@ -2438,7 +2452,9 @@ def print_startup_warning() -> None:
 def run_console() -> int:
     print_startup_warning()
     ib = IB()
+    session = ConsoleSession(Path(cfg.BASE_DIR) / "state")
     try:
+        session.start()
         connect_manual_console(ib)
         print(
             f"Connected to {cfg.HOST}:{cfg.PORT} with manual client ID "
@@ -2447,7 +2463,9 @@ def run_console() -> int:
         running = True
         while running:
             print_menu()
-            choice = input("Select option: ").strip()
+            choice = session.read_choice()
+            if choice is None:
+                break
             try:
                 running = execute_menu_choice(ib, choice)
             except BrokerActionError as error:
@@ -2473,13 +2491,19 @@ def run_console() -> int:
         log_manual_action("CONSOLE", "INTERRUPTED")
         print("\nConsole interrupted.")
         return 130
-    except ManualControlError as error:
+    except EOFError:
+        print("\nTerminal input closed; disconnecting the PC console.")
+        return 0
+    except (ManualControlError, RuntimeError) as error:
         print(f"Console startup failed: {error}")
         return 20
     finally:
-        if ib.isConnected():
-            ib.disconnect()
-        log_manual_action("CONSOLE", "STOPPED")
+        try:
+            if ib.isConnected():
+                ib.disconnect()
+        finally:
+            session.stop()
+            log_manual_action("CONSOLE", "STOPPED")
 
 
 if __name__ == "__main__":

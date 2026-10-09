@@ -196,3 +196,22 @@ The Mobile Manual Console no longer keeps an IBKR API socket open while idle. Br
 - Flex-confirmed executions are the accounting source; IBKR RTH 1-minute historical bars provide the held-period price path.
 - Future Flex sync runs backfill only newly closed trades. Historical-bar retrieval uses short-lived read-only client ID 1008 only when needed and never keeps a persistent extra IBKR client open.
 - Trade History failures are isolated from Flex sync/trading and cannot block trading.
+
+
+## 2026-10-07 - PC Manual Console lifecycle/history consolidation
+- Consolidated previously uncommitted Sep-24 PC Manual Console hardening already present on the operational server.
+- Added single-session lifecycle control with PID/start-time/process validation and a 10-minute idle menu timeout.
+- A replacement console may close an older console only while the older session is waiting at the menu; an in-progress action is never pre-empted.
+- Option 14 now reads Flex-confirmed broker fills plus IBKR API fills still awaiting Flex, rather than the legacy local audit table.
+- Focused unittest suite covering manual console, trade history, pending P&L and order lifecycle: 9/9 PASS.
+- No strategy logic, automated order sizing, broker transmission policy or Mobile Console broker-mutation gate was changed.
+
+
+## 2026-10-09 - Post-close Telegram status precedence corrected
+- Confirmed strategy signals are established from completed daily closes; the post-close next-session preview is the current strategy plan once the just-completed session data are available.
+- Fixed /status precedence: a newer post-close preview targeting a later ET trading session now supersedes the saved same-calendar-day regular scan for status display.
+- This prevents an already-obsolete same-day plan from remaining labelled PLANNED / CURRENTLY VALID after the next-session post-close evaluation has completed.
+- The regular 09:28 strategy cycle and 09:30 broker-transmission/safety path remain unchanged and authoritative for actual execution.
+- Added a regression reproducing the Oct-06 case (old JNJ/MRK/RHI regular plan, newer Oct-07 RHI-only preview).
+- Focused Telegram/manual-console/trade-history/P&L/order-lifecycle suite: 14/14 PASS.
+- No strategy parameter, candidate rule, allocation rule or broker order policy changed.

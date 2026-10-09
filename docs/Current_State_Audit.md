@@ -350,3 +350,12 @@ Begin with a data-integrity and identifier-foundation phase before any further s
 5. Add IBKR daily OHLCV update workflow for incremental operation.
 6. Rebuild adjusted research datasets without altering production trading behavior.
 7. Build a market-state dataset before defining market regimes.
+
+
+### Post-close status authority
+
+For operator-facing status, a successfully generated post-close preview for a
+later eligible ET session supersedes the saved regular scan from the
+just-finished ET session. This reflects the strategy rule that signals are based
+on completed daily closes. The preview is read-only and does not replace the
+09:28 regular cycle or the 09:30 broker-transmission safety checks.

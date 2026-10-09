@@ -1239,3 +1239,47 @@ BACKFILL / VALIDATION:
 - Direct API returns 7 trades and research_or_simulation=false.
 - Targeted regression suite: 19/19 PASS (Trade History, mobile schema, order completion/holding, Telegram alerts, runtime restart hardening).
 - No strategy code, order submission code or IB Gateway service was changed/restarted for this feature.
+
+
+## 2026-10-07 - PC MANUAL CONSOLE CONSOLIDATION + DAILY PAPER SCAN REVIEW
+
+DOCUMENTATION / GIT CONSOLIDATION:
+- Reviewed previously uncommitted PC Manual Console changes that had been present on the operational server since Sep-24.
+- PC console option 14 now reads the durable broker execution ledger: Flex-confirmed fills plus only IBKR API fills still awaiting Flex confirmation. The legacy local executions table remains a separate bot audit store.
+- Added ConsoleSession lifecycle control for the PC console: only one active PC manual-console session is permitted; a new session may replace an older session only while the old session is idle at the menu; it must not terminate a console that is processing an action.
+- The console menu has a 10-minute inactivity timeout. On timeout/EOF it disconnects cleanly from IBKR and removes its session marker.
+- Session identity validates PID, process start ticks, UID and expected manual_control_console.py command to reduce stale/reused-PID risk.
+- Focused unittest validation covering manual console, trade history, pending P&L and order lifecycle: 9/9 PASS. Python syntax/import path also remained valid. No broker mutation was performed by this validation.
+
+2026-10-07 PAPER DAILY SCAN REVIEW:
+- The regular cycle started at 13:28:36 UTC and completed normally. Five position slots were available, with zero open positions and zero pending BUY orders at scan time.
+- Operational buy budget was USD 1,014,334.8237. Therefore the single submitted order was NOT caused by insufficient cash, allocation limits or slot exhaustion.
+- Exactly one symbol qualified under the production entry rules: RHI.
+- RHI signal-day close (2026-10-06): USD 33.67; SMA200: USD 31.34915; lower 20-day Bollinger Band (2.5 sigma): USD 33.919004. RHI was above the SMA200 and below the lower Bollinger Band, satisfying both trend and pullback conditions.
+- With only one valid candidate, ranking was not required. The plan allocated 20% of investable capital (USD 202,866.96474), producing a BUY LIMIT for 6,211 RHI at USD 32.66, estimated notional USD 202,851.26.
+- IBKR accepted the PAPER order (order id 216 / perm id retained in the execution report) with no rejection or duplicate prevention. At the reviewed snapshot it remained unfilled/pending.
+- Conclusion: one order today is expected strategy behavior, not an execution or sizing fault.
+
+
+[2026-10-09] CORRECTION — POST-CLOSE SIGNAL AUTHORITY / TELEGRAM STATUS PRECEDENCE
+
+USER CLARIFICATION:
+- Strategy entry conditions are established from the completed US daily close. The post-close evaluation using the just-completed daily bars determines the next-session candidate set; the morning 09:28 cycle repeats/validates the same strategy conditions before the 09:30 execution path and refreshes broker/account safety state.
+
+OCT-06 / OCT-07 FORENSICS:
+- The 2026-10-06 regular cycle selected JNJ, MRK and RHI for the Oct-06 session.
+- After the Oct-06 close, the successful post-close refresh through market-data date 20261006 generated the next-session preview at 2026-10-06T21:33:27Z for ET session 2026-10-07. That preview selected only RHI.
+- The Oct-07 regular cycle subsequently also selected only RHI. Thus the single Oct-07 broker order was consistent with the post-close signal set; no strategy rule was changed.
+- The operator elected not to continue a broader independent recomputation audit at this time. No strategy or indicator parameter change was made.
+
+TELEGRAM /status DEFECT FOUND:
+- At approximately 18:42 ET on Oct-06, after the Oct-07 post-close preview already existed, /status could still display the earlier Oct-06 regular-scan plan (JNJ/MRK/RHI) as PLANNED / CURRENTLY VALID.
+- Root cause: telegram_commands.render_status() gave precedence to a same-calendar-day regular scan whenever scan_date_et == today_et, even when a newer post-close preview targeted a later eligible trading session.
+- Correct behavior: once a current post-close preview targets a trading date later than the saved regular scan's ET date, that preview supersedes the older regular plan for operational status display. The regular 09:28/09:30 execution path remains authoritative for broker transmission and safety checks.
+- telegram_commands.py was corrected accordingly. This changes status presentation only; it does not alter strategy evaluation, order sizing, order transmission or broker safety gates.
+- Added regression coverage reproducing the exact Oct-06 post-close case: old JNJ/MRK/RHI regular plan plus new Oct-07 RHI-only preview must display only the RHI next-session plan.
+- Focused regression suite after the correction: 14/14 PASS (Telegram monitoring + manual console + trade history + pending P&L + order completion/holding).
+
+DOCUMENTATION CONSOLIDATION:
+- Operating Manual, Current State Audit, Project Specification and Changelog updated to state post-close preview/status precedence explicitly.
+- PC Manual Console Sep-24 lifecycle/execution-history changes remain included in this consolidation.
