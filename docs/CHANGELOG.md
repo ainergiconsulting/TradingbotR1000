@@ -215,3 +215,10 @@ The Mobile Manual Console no longer keeps an IBKR API socket open while idle. Br
 - Added a regression reproducing the Oct-06 case (old JNJ/MRK/RHI regular plan, newer Oct-07 RHI-only preview).
 - Focused Telegram/manual-console/trade-history/P&L/order-lifecycle suite: 14/14 PASS.
 - No strategy parameter, candidate rule, allocation rule or broker order policy changed.
+
+## 2026-10-11 — Stop-loss research results consolidated
+- Added docs/STOP_LOSS_BACKTEST_RESULTS.md, consolidating the prior 3% run and today's 4% and 0.5% runs executed on the Windows PC.
+- Recorded configured/zero-slippage results, exact baseline reproducibility, Windows source paths, MAE non-recovery analysis, recovery categories and engine-audit limitations.
+- At configured slippage, baseline CAGR 14.04%; stop 3% 2.68%; stop 4% 3.71%; stop 0.5% 0.67%. All tested fixed stops reduce return; 0.5% reduces drawdown while sharply reducing time held.
+- Documented the return-based profit_factor metric issue without changing the research engine.
+- Master History now links the consolidated report. Research documentation only; no operational strategy or broker/service changes.

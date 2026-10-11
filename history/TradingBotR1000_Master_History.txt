@@ -1291,3 +1291,24 @@ DOCUMENTATION CONSOLIDATION:
 - Focused validation before commit: 14/14 PASS; Python compilation and git diff checks passed.
 - Restarted only tradingbot-telegram.service so the corrected /status precedence is active in the running listener. Service returned ACTIVE/RUNNING. Controller, IB Gateway, execution monitor and Mobile Console were not restarted by this consolidation.
 - LiveTradingR1000, the Live go-live runbook, current IWB holdings refresh and Live-specific .gitignore work remain outside this PAPER commit. They were deliberately not mixed into the PAPER consolidation and require their own review/secret audit before versioning.
+
+[2026-10-11] RESEARCH — STOP LOSS BACKTEST RESULTS CONSOLIDATED
+User requested permanent documentation of today's simulations and links from Master History.
+Canonical server report: /home/ibkradmin/trading/TradingbotR1000/docs/STOP_LOSS_BACKTEST_RESULTS.md.
+Changelog reference: /home/ibkradmin/trading/TradingbotR1000/docs/CHANGELOG.md, entry 2026-10-11 — Stop-loss research results consolidated.
+Windows sources:
+- 3%: C:\TradingbotR1000\backtests\production_baseline_stoploss_3pct\runs\run_20260923_203718.
+- 4%: C:\TradingbotR1000\backtests\production_baseline_stoploss_4pct\runs\run_20261011_151041.
+- 0.5%: C:\TradingbotR1000\backtests\production_baseline_stoploss_0p5pct\runs\run_20261011_152858.
+Period 2017-05-19 to 2026-07-21; daily bars; current IWB universe, 979 symbols loaded; initial USD 1,000,000; maximum five positions; same entry/RSI/time-exit rules; commissions zero; configured slippage 5 bps per side and additional zero-slippage variants.
+Configured-slippage comparison (final USD / CAGR / max drawdown / completed trades):
+- Baseline: 3,324,659.64 / 14.04% / -22.92% / 561.
+- Stop 3% (prior result): 1,273,931.71 / 2.68% / -18.53% / 731.
+- Stop 4%: 1,395,077.59 / 3.71% / -23.77% / 690.
+- Stop 0.5%: 1,062,763.52 / 0.67% / -7.97% / 867.
+Zero-slippage CAGR: baseline 15.45%, stop 4% 5.36%, stop 0.5% 2.08%.
+Both new runs reproduced the original configured-slippage baseline exactly; user supplied logs show 9 shared engine tests PASS and verification_all_passed=True.
+User-defined non-recovery = final loss at the bot's normal exit. Among baseline closed trades with MAE <= -4%, 185/263 = 70.34% ended at a loss. However, 78 ended nonnegative (mean +3.86%), 101 lost less than the regular stop outcome (mean -1.80%), and only 84 lost >=4.048% (mean -8.75%). Thus 179/263 = 68.06% ended better than a regular -4.048% stop, before gap effects and changed portfolio paths. This is a baseline-trade diagnostic, not all candidates or per-symbol analysis.
+Stop 0.5%: 788 stop exits, 657 on entry session (75.78% of all 867 closed trades); reported EOD exposure 4.53%, which excludes complete intraday round trips.
+Audit: three independent synthetic checks of provided engine snippets passed; scheduled-open exits precede later lows, stop threshold and cash/P&L are coherent in tested cases. No full historical trade audit certified. profit_factor uses net-return sums instead of monetary P&L sums; issue documented, not corrected. Data-adjustment, current-universe, daily-fill and in-sample selection limits are recorded in the report.
+Decision/status: results recorded as research only; no production strategy, stop, service, IBKR order or LIVE activation changed.
