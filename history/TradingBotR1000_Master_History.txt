@@ -1292,6 +1292,10 @@ DOCUMENTATION CONSOLIDATION:
 - Restarted only tradingbot-telegram.service so the corrected /status precedence is active in the running listener. Service returned ACTIVE/RUNNING. Controller, IB Gateway, execution monitor and Mobile Console were not restarted by this consolidation.
 - LiveTradingR1000, the Live go-live runbook, current IWB holdings refresh and Live-specific .gitignore work remain outside this PAPER commit. They were deliberately not mixed into the PAPER consolidation and require their own review/secret audit before versioning.
 
+[2026-10-11] WEEKLY_MAINTENANCE: START at 2026-10-11T08:00:00Z. Trading controller will stop; Ubuntu packages will be updated in controlled maintenance; server will reboot afterward. IB Gateway authentication may require user action after reboot.
+
+[2026-10-11] WEEKLY_MAINTENANCE: PACKAGE PHASE COMPLETE. Controlled reboot initiated; post-reboot Gateway/API authentication and reconciliation are required before trading resumes.
+
 [2026-10-11] RESEARCH — STOP LOSS BACKTEST RESULTS CONSOLIDATED
 User requested permanent documentation of today's simulations and links from Master History.
 Canonical server report: /home/ibkradmin/trading/TradingbotR1000/docs/STOP_LOSS_BACKTEST_RESULTS.md.
@@ -1312,3 +1316,370 @@ User-defined non-recovery = final loss at the bot's normal exit. Among baseline 
 Stop 0.5%: 788 stop exits, 657 on entry session (75.78% of all 867 closed trades); reported EOD exposure 4.53%, which excludes complete intraday round trips.
 Audit: three independent synthetic checks of provided engine snippets passed; scheduled-open exits precede later lows, stop threshold and cash/P&L are coherent in tested cases. No full historical trade audit certified. profit_factor uses net-return sums instead of monetary P&L sums; issue documented, not corrected. Data-adjustment, current-universe, daily-fill and in-sample selection limits are recorded in the report.
 Decision/status: results recorded as research only; no production strategy, stop, service, IBKR order or LIVE activation changed.
+
+
+[2026-10-17] IB GATEWAY PAPER LOGIN INCIDENT — RECOVERY VIA VNC / SENTINELX
+SCOPE: Hetzner IBKR001; PAPER environment. No LIVE login, strategy change, order submission, or test order was performed as part of recovery.
+- Operator reported difficulty using bVNC Free and an IB Gateway dialog 'UNRECOGNIZED USERNAME OR PASSWORD'. Operator initially stated no credentials were entered, subsequently clarified that the input/error was their own mistake. Do not characterize the root cause as a confirmed Gateway defect.
+- At first diagnosis, tradingbot-ibgateway.service was running but API port 4002 was not listening, health supervisor reported DISCONNECTED/CONNECTION_REFUSED, and tradingbot-controller.service was stopped (inactive since 2026-10-17 13:34:43 UTC).
+- Current IB Gateway installation launched by systemd: /home/ibkradmin/Jts/ibgateway/stable_20261017/ibgateway (version 10.50), started at 2026-10-17 13:36:12 UTC; previous directory /home/ibkradmin/Jts/ibgateway/1045 remained present. The coincidence with the installation is not proof that the update caused login failure.
+- IB Gateway launcher log shows PAPER_CONNECT authentication attempts, including NSErrorResponse.INVALID_USERNAME_OR_BAD_IP at 13:51:55 UTC; subsequent retry attempts and 'Authorization failed: Invalid username or password' at 13:56:17 UTC. These are diagnostic symptoms, not proof that the password itself was incorrect. Gateway logon configuration had tradingMode=p.
+- Operator corrected the login using the remote VNC desktop. The Connection Status display then showed Interactive Brokers API Server connected, Market Data Farm ON, Historical Data Farm ON, API Client '1 connected'. FIX Server/Client disconnected is immaterial for this API-based bot.
+- API port 4002 subsequently opened. Execution Monitor logged transient error 10141 ('Paper trading disclaimer must first be accepted for API connection') at 18:12:51 UTC, then 'Execution monitor connected (read-only polling)' at 18:13:07 UTC. No outstanding disclaimer issue was observed in the later health status.
+- Health supervisor status at 18:14:41 UTC: live_api_status CONNECTED, gateway_process_status RUNNING, api_socket_status CONNECTED, live_api_error empty, consecutive_api_failures 0, strategy_cycle_watchdog NOT_DUE. Here live_api_status is the health-monitor field name; the Gateway was in PAPER mode.
+- A read-only service inspection confirmed tradingbot-controller.service WorkingDirectory=/home/ibkradmin/trading/TradingbotR1000/current_reference/PaperTradingR1000 and TRADINGBOTR1000_ENABLE_AUTOMATED_PAPER_EXECUTION=1; automated PAPER execution was deliberately retained.
+- User expressly authorized restarting the PAPER controller and requested no test orders. SentinelX direct 'start' service action was blocked by the allowlist, but the permitted 'restart' action completed successfully. At 2026-10-17 18:18:30 UTC / 22:18:30 Dubai, tradingbot-controller.service returned ACTIVE/RUNNING (PID 321221).
+- Post-restart checks: IB Gateway ACTIVE, controller ACTIVE, execution monitor ACTIVE, health supervisor ACTIVE, API socket/port 4002 available. No manual/test orders were submitted and no strategy/settings were changed by the assistant.
+- Status: operational services restored for PAPER; full end-to-end automated strategy execution awaits verification at next eligible US trading session (expected Mon 2026-10-19, subject to market schedule). Do not describe a future trade cycle as already validated.
+- Pending operational follow-up: verify first next-session automated scan, resulting planned orders and actual IBKR execution/reporting; keep LIVE separated.
+
+[2026-10-18] WEEKLY_MAINTENANCE: START at 2026-10-18T08:00:17Z. Trading controller will stop; Ubuntu packages will be updated in controlled maintenance; server will reboot afterward. IB Gateway authentication may require user action after reboot.
+
+[2026-10-18] WEEKLY_MAINTENANCE: PACKAGE PHASE COMPLETE. Controlled reboot initiated; post-reboot Gateway/API authentication and reconciliation are required before trading resumes.
+
+
+[2026-10-21] LIVE RESUMPTION AUDIT / PAPER MUST REMAIN OPERATIONAL
+User resumed Live preparation. Read-only verification: Paper controller/Gateway active, TCP4002 open; Live Gateway/VNC inactive, TCP4001/5902 closed, Live controller absent; Live Flex disabled without token/Trade Confirmation. Live code is a September staging copy: 23 shared modules differ (intentional and later Paper changes mixed), trade_history.py missing, 63 Live Python modules parse. No broker orders/session switch/service restart/activation performed. Preserve the initial EUR10,000 ceiling and reconcile with the existing live-readiness-20260924 guard preparation before activation. User's later requirement that the actual IBKR Paper bot continue alongside Live supersedes the older shadow-only comparison suggestion. Concurrent market-data/session behavior has NOT been validated. Detailed current findings and next acceptance gates: docs/LIVE_RESUMPTION_AUDIT_2026-10-21.md. Git status shows Master History tracked again; previous index-only exclusion did not persist, so review before future publication. No commit/push performed.
+
+
+[2026-10-21] ISOLATED LIVE INTEGRATION CANDIDATE STARTED
+Created .worktrees/live-integration-20261021 on branch live-integration-20261021 from current main. Three-way reconciliation against bff6cba: 5 unchanged staging modules updated, trade_history added, manual_trading_core/mobile_api merged; config conflict resolved preserving Live P&L and adding trade-history client setting. Preserved other Live identity/mode customizations. Copied preliminary cap/preflight and tests from prior readiness branch. All 66 candidate Python modules parse; 2 existing pure unittest cap tests PASS with no broker activity. Cap is NOT wired into order submission; all merged behaviors still require review and integration tests. Auto-review rejected broad private guard/order source disclosure to chat; structural checks were used instead and narrow permission is needed for remaining source review. See candidate docs/LIVE_INTEGRATION_PROGRESS_2026-10-21.md. Operational Paper/Live source trees untouched; no service start/restart, broker order, commit or push.
+
+
+[2026-10-21] USER REPRIORITIZES LIVE SERVICES / CREDENTIALS / REPORTING
+User clarified Live Flex token is absent, Telegram reporting destination is undefined, and only the Paper console is installed. Initial Live capital limit remains EUR10,000, but configuring the Live operational components takes priority over cap integration. Reverified: Live Flex disabled, no token, Activity query set and Trade Confirmation absent; no Live Telegram credentials/chat configured; no Live mobile-console, Telegram or Flex service installed. Paper console remains active on localhost8765.
+Prepared configure_flex_credentials.py in the Live staging directory and the isolated Live integration candidate. It prompts via getpass twice, refuses existing active config/token, writes atomically with0600 permissions, never prints the token and always leaves Flex disabled. Syntax and status-only invocation verified without credentials/network activity. Prepared a disabled Telegram config in Live staging and a credential-free example in both staging/candidate; no Paper credential/chat copied.
+Proposed (not yet user-confirmed): dedicated Live Telegram bot/chat, clear LIVE labels, independent credentials and console access. Do not send Telegram messages until explicitly authorized. Live console auth/session/runtime and URL remain to configure; no console has been published. Flex authentication serves report download; the Live Gateway requires separate IBKR user authentication. User must enter Live secrets directly on server rather than in chat. All order flows remain inactive. Source-review permission for cap integration remains pending and was not assumed from this priority correction.
+
+
+[2026-10-21] LIVE FLEX TOKEN ENTERED LOCALLY / ACTIVITY DOWNLOAD VALIDATED
+User entered Live Flex token directly over SSH using the getpass helper; no token was pasted into chat or copied from Paper. Verified config owned by ibkradmin with0600 permissions and enabled=false. An explicit one-off HTTPS Flex v3 SendRequest/GetStatement for configured Live Activity query succeeded. XML query name matches 30d_Statement; one statement and one account with Live identifier prefix. Raw XML and observed account are stored only in private Live reports/state with0600 permissions; no identity, balances or trades disclosed to chat. Exact intended-account match is still pending the Live Gateway read-only identity check. This validates token/query access only; no ingestion, scheduled Flex service, order flow or Gateway session activated. Live Trade Confirmation query is still absent and must be configured next. Live Telegram destination/credentials and dedicated console remain pending.
+
+
+[2026-10-21] LIVE FLEX ACTIVITY-ONLY PATH CONFIRMED / TRADE CONFIRMATION NOT REQUIRED
+User asked to use existing Live 30d_Statement instead of creating Trade Confirmation. Validated private XML structure: Trades/Trade has EXECUTION detail and populated ibExecID, tradeID, transactionID, quantity, price, commission, currency and date fields. Existing ledger parser reads the sample. Temporary isolated SQLite import repeated for same and differently named files produced no duplicate rows. No operational ledger touched.
+Adapted flex_sync.py ONLY in isolated live-integration-20261021 candidate from trade_confirmation report selection/glob to activity. Offline sync test using the downloaded sample passed across two separately named downloads with network, Telegram and trade-history API calls mocked; preserves fresh-download detection. Added a synthetic-data regression test test_live_activity_flex_sync.py. Combined targeted unittest run: 3 tests PASS (new Activity test plus 2 existing cap tests). This verifies the present sample and synthetic case, not all trade correction/cancellation scenarios or production account integration.
+Live reporting can use Activity query 30d_Statement as the Flex reconciliation source. Trade Confirmation query is no longer a required setup step for the candidate. API execution monitor remains the planned immediate-fill notification source; Flex Activity is subsequent reconciliation rather than real-time notification. Actual Live Flex config remains enabled=false; adapted candidate not deployed; no scheduled sync, Telegram notification, broker order or Paper change performed. Next operational component: dedicated Live Telegram destination/credentials, then Live console.
+
+
+[2026-10-21] DEDICATED LIVE TELEGRAM BOT NAMED / PRIVATE TOKEN ENTRY READY
+User supplied the new dedicated Live bot username GioR1000LiveBot. Prepared configure_telegram_credentials.py in Live staging and integration candidate. It requests token through getpass twice, verifies getMe identifies exactly the expected bot (no message sending), then stores token/config privately with0600 permissions and leaves Telegram enabled=false. It refuses an existing token or active config. Syntax and status-only execution verified. At preparation time token file remains absent and chat allowlist empty; identity is not yet verified until user runs helper. Next: user enters token over SSH, then explicitly opens the bot's private chat and sends Start to identify a destination. No Live Telegram service, notifications or broker orders activated.
+
+
+[2026-10-21] LIVE TELEGRAM TOKEN AND PRIVATE RECIPIENT VERIFIED
+User ran private token entry helper successfully, then opened GioR1000LiveBot and sent Start. Read-only Telegram getMe confirmed the expected dedicated bot; getUpdates found exactly one recent private Start from a human sender matching the private chat ID. That chat ID exactly matches the established Paper allowlist recipient, resolving identity without printing identifiers. Saved only that recipient to Live telegram_config.json with0600 permissions. Token and Live metadata remain private; no Paper config/credential changed. Telegram enabled=false; no Live listener/service started and zero messages sent. A single clearly labelled LIVE setup test can be sent only after an explicit user instruction to send it. Live console remains the next setup component after Telegram transport validation.
+
+
+[2026-10-21] LIVE TELEGRAM ONE-OFF TEST SENT WITH EXPLICIT AUTHORIZATION
+User explicitly authorized the reviewed single setup message. Rechecked dedicated bot identity and the sole private recipient matching the established Paper recipient. Telegram sendMessage returned success for the exact approved LIVE setup text and expected chat. Private receipt saved to Live state with0600 permissions and duplicate-send guard. No token/chat identifiers disclosed, no Paper settings changed, no Live listener/automatic reporting/trading enabled. Next: dedicated Live console setup.
+
+
+[2026-10-21] LIVE CONSOLE INSTALLED READ-ONLY / PRIVATE PASSKEY ENROLLMENT PENDING
+Prepared and tested dedicated live_console_entry ASGI wrapper with deny-all order mutations, protected first enrollment, unique Live session cookie/passkey label and account-ID response redaction. 11 targeted tests PASS. Promoted candidate Python/PWA source into stopped Live staging only after private source backup, preserving actual Live Flex/Telegram credential files. Installed/enabled tradingbot-live-mobile-console.service on127.0.0.1:8766 with Live-only writable directory, Paper directory masked and NoNewPrivileges. Tailscale Serve HTTPS8443 added at https://ibkr001.tailfc0933.ts.net:8443; existing Paper443 mapping unchanged and no Funnel enabled. Paper controller/Gateway/console PIDs unchanged. Live HTTP/HTTPS home and manifest OK; unauth account401, orders403, unbootstrapped registration403. Private setup token generated locally; get_console_setup_link.py prints the enrollment URL only to user's SSH terminal, not chat. User passkey enrollment and browser validation pending. Actual Live Gateway/account/market data not connected; no order activation. Flex/Telegram automatic services remain disabled. Details: docs/LIVE_CONSOLE_SETUP_2026-10-21.md. No commit/push; backup/worktree paths explicitly ignored.
+
+
+## Live console responsive UI — 2026-10-21T09:01:36.717564+00:00
+Live console URL: https://ibkr001.tailfc0933.ts.net:8443/
+Updated Live-only responsive layout, Italian labels, persistent LIVE identity, installation guidance, distinct icons and credential-free downloadable Windows shortcut. Phone and PC use the same console. Only tradingbot-live-mobile-console.service restarted.
+Verification: 12 targeted unit tests passed before deployment; HTML hooks, JavaScript syntax, manifest, icon sizes and breakpoints checked. HTTPS root/static assets/shortcut return 200; shortcut is an attachment without setup credentials. Unauthenticated account endpoint returns 401; order mutation and registration without bootstrap return 403. Paper controller, Gateway and console remain active; API port 4002 is open.
+Initial transient 502 immediately after restart resolved after application startup.
+Browser visual QA could not run because Chromium was unavailable; real-device layout and passkey enrollment remain pending. First enrollment uses get_console_setup_link.py via private SSH; never record bootstrap link in history.
+Live order execution and automatic reporting remain disabled.
+
+2026-10-21: Phone passkey enrollment succeeded (register/finish HTTP 200). Subsequent account HTTP 500 traced to inactive Live Gateway/API 4001. Live account endpoint now returns descriptive 503 for connection/timeout. Banner corrected after authentication. Two regression checks and 12 targeted tests passed. Only Live console restarted; Paper services active. User should reload base URL; no reenrollment required. Live trading remains disabled.
+
+2026-10-21: User reported missing Paper console options in Live. Compared all menu hooks: Paper 16 vs Live 15 (8 operational commands collapsed/disabled). Restored visible 8-command section while preserving disabled controls and backend mutation guard; added missing trade-history menu and renderer using already-present Live read endpoint. Both now expose same 16 menu views. Preserved responsive Live identity. JS syntax and menu equality checks passed; served HTTPS assets verified. Static-only deployment, no service restart, credentials untouched, Live trading remains disabled. Phone icon access and PC authenticated access confirmed by user/screenshots.
+
+2026-10-21: Started existing Live Xvfb/Fluxbox/Gateway/VNC services for manual IBKR Live login. Live GUI uses display :2, VNC loopback 5902. Paper process IDs unchanged. No Live controller or execution activation. User login and dual-session validation pending.
+
+2026-10-21: Live Gateway login stalled at Authenticating, later TigerVNC showed gray window. Live X/VNC/Gateway processes active, API 4001 closed, Live Fluxbox inactive. Restarted only Live window manager and requested display :2 redraw. Paper PIDs unchanged and 4002 open. Login completion remains unverified; no Live trading enabled.
+
+2026-10-21: User confirmed same gray Live Gateway window after Fluxbox restoration and Viewer reconnect. Preserved Live journal privately on host, restarted only tradingbot-live-ibgateway.service to restore manual login. Paper service process IDs unchanged; no Live trading activation. Authentication and concurrent market data validation still pending.
+
+2026-10-21: Live authentication diagnosis: network connection succeeded and password accepted; timeout strings were configuration/monitor events, not confirmed network failures. Found mapped security authentication modal behind Authenticating splash on display :2. Raised only that Live modal for user second-factor completion. No credential/code read or entered. Paper unchanged.
+
+2026-10-21: Live login succeeded after exposing hidden security modal. Confirmed simultaneous read-only IB API connections: Live 4001 and Paper 4002. Each exposes one distinct account; Live exactly matches previously validated Live Flex account; Paper uses DU account. Private diagnostic state saved without account identifiers. No orders sent. This validates concurrent sessions and account separation, not yet concurrent streaming quotes/historical-bar subscriptions. Live controller/execution remains disabled.
+
+2026-10-21: User reported repeated phone/Bluetooth requirement on PC and console HTTP500. Identified expected_live_account_not_configured; configured private console environment identity from verified matching API/Flex account, no identifier in source or docs. Added authenticated/recent-auth guarded additional passkey enrollment with platform authenticator option, duplicate rejection, retained original phone credential; UI button under Install/links. Added balance-only account summary avoiding unrelated execution-history waits; canonical snapshot is not overwritten by partial data. 19 targeted tests passed and JS syntax validated. Only Live console restarted; Paper PIDs unchanged, API4002 open. Subsequent direct Live API probes timed out; discovered Gateway dialogs Pending Tasks and Re-login is required. Broker relogin must be completed by user; market-data parallel test and local PC enrollment remain pending. No orders enabled/sent.
+
+[2026-10-23] BOSGAME WINDOWS 11 BACKTEST WORKSTATION PREPARATION
+Scope: new Bosgame mini PC for independent research/backtesting, NOT an order-execution host. Windows actions performed by operator and verified via screenshots/command output, not SentinelX on Bosgame.
+Hardware/OS: Ryzen 5 7640HS with Radeon 760M; RAM 32GB (28.8GB usable); Windows 11 Pro 24H2 x64; PC DESKTOP-QRDIOSM. C: 952GB total, 892GB free; no second drive visible.
+Remote access: Windows Remote Desktop On; Tailscale on Bosgame Connected at 100.90.176.127; Samsung also using Tailscale. Microsoft Windows App configured; operator confirmed remote mouse/keyboard work and RDP works with Wi-Fi off over mobile 4G/5G. No public RDP port should be opened.
+Installed: LibreOffice 26.8.1 x86-64; Python 3.13.17 x64 (python --version confirmed); VS Code x64 user edition with Microsoft Python, Python Debugger and Python Environments extensions, Python313 interpreter recognized; Git for Windows 2.56.0.windows.2 (git --version confirmed); 7-Zip. Git choices: VS Code default editor, main for new repos, command-line PATH, bundled OpenSSH, Windows Secure Channel, checkout as-is/commit Unix LF, MinTTY, pull fast-forward only, Git Credential Manager, file caching on, symbolic links off, Scalar off.
+Power: Balanced; display turns off after 2h; system sleep Never; Energy saver Off. Reboot recovery, backup and automated job restart not yet verified.
+Data plan: FirstRate Stocks Complete intraday data including delisted stocks intended for purchase, NOT purchased/installed yet; fundamental add-on optional. Norgate not planned. Russell 1000 historical universe to be reconstructed using iShares IWB/SEC holdings subject to verification of historical coverage and differences vs official index; no complete membership dataset obtained yet. Existing Massive daily data and trusted baseline to be transferred and baseline reproduced before using FirstRate. No market data transferred yet.
+Pending: confirm C:\TradingBotR1000 folder creation (instructed but not confirmed); set up project folders and isolated Python environment after checking dependencies; transfer code and data; reproduce baseline; assess space/backup; FirstRate acquisition and intraday testing. No changes to live/Paper trading logic or IBKR systems occurred for Bosgame setup.
+SentinelX Free quota is one operational host currently held by IBKR001; Bosgame not enrolled; ChatGPT Business seats are not SentinelX host entitlements.
+
+[2026-10-23] HETZNER PHP ADVISORY — READ-ONLY AUDIT
+Operator provided Hetzner notice citing CVE-2026-109618 and CVE-2026-109619. Receipt does not establish host vulnerability.
+Earlier transient SentinelX agent_offline responses did not prove Hetzner was offline: user confirmed Telegram/console working. Later IBKR001 SentinelX ping succeeded, agent was active since Oct 18, and uptime over five days. Root cause of intermittent connection not established.
+Read-only security checks: which php returned no binary; /usr/bin/php* absent; apt list --installed 'php*' showed no installed PHP packages; no php, apache2 or nginx unit files; /var/www absent; sudo docker ps showed no running containers. Listening-port and active-service checks showed no PHP-specific endpoint. Paper controller, IB Gateway, execution monitor, health supervisor, mobile consoles and Telegram services active when checked. This does not exhaustively exclude nonstandard PHP installations or dormant Docker images.
+Assessment: no evidence of affected PHP service on IBKR001, so no PHP-specific remediation indicated based on inspection. No updates, reboots, trading modifications, service restarts or orders executed.
+Pre-append Master History backup: /home/ibkradmin/trading/TradingbotR1000/history/TradingBotR1000_Master_History.txt.bak.20261023-bosgame-php
+
+
+[2026-10-25] BOSGAME INDEPENDENT QUANT RESEARCH LAB - CODEX REPORTED BASELINE
+User provided Codex operational report dated 2026-10-23. This is a self-report, not an independent audit by this assistant.
+Local root: C:\Users\Gio\Documents\TradingBotR1000\quant_lab (directory name legacy only; laboratory independent of TradingBotR1000 and Russell 1000).
+Reported implementation: AGENTS.md project rules; separate source/synthetic data, strategies, config, runs, registry and reports-to-sync directories; Python run manager with progressive IDs, immutable run folders, code/data/config snapshots; SQLite registry plus CSV index; Italian REPORT.txt, metrics, plots, logs and SHA256 manifest; reproducibility command; chronology and determinism/accounting tests; OOS and fixed-parameter rolling walk-forward. Four synthetic trial runs BT000001..BT000004, with two initial SVG-related issues preserved and annotated, followed by clean reproducible runs; 11 tests passed; zero validated market strategies. Initial engine is single-series long/cash only. No old TradingBotR1000 code or Massive data transferred, and no FirstRate purchased or downloaded. No Hetzner trading changes.
+Objective: broad independent quantitative strategy research, not necessarily Russell 1000. Historical R1000 membership reconstruction is a useful but nonblocking parallel objective. Google Drive is intended as selective, temporary report-transfer medium, not bulk-data store or permanent archive. Bosgame retains primary working files; portable SSD may hold selected research archives, with separate backup needed.
+
+[2026-10-25] FIRSTRATE DATA ACQUISITION - MANDATORY FULL-ENTITLEMENT DOWNLOAD CHECKLIST
+User requirement (HIGH PRIORITY): avoid repeating prior Polygon/Massive mistake of paying for data access but failing to download the entire entitled historical dataset. Before purchasing any FirstRate dataset, verify the exact selected bundle contents, deliverable dates and entitlement, license, total zipped and extracted size, disk and backup capacity, delivery method/API, update schedule and access-expiry terms. Do not purchase or start paid subscriptions without explicit user authorization.
+Official FAQ checked 2026-10-25: initial historical bundle purchase is a ONE-TIME payment including full historical series through purchase date plus ONE MONTH of daily updates; later update subscription is OPTIONAL. Download links are disabled when no subscription/access is active, but downloaded data have a perpetual-use license. Bundle API is available and serves ZIP archives in ticker-range partitions; no per-ticker/custom-period API for these bundles, and provider states no rate limits. Archives are each under 4GB. Critical: data for delisted stocks are in separate 'Delisted' archives, and split/dividend/corporate-action supporting files are in 'Other Data'; these must be downloaded too. Full-history adjustments may be revised after new split/dividend; use provider guidance rather than naive append-only updates.
+CRITICAL BUNDLE DISTINCTION: 'Stocks Complete' covers stocks and delisted stocks but NOT ETFs. If ETF history is required (SPY, QQQ, IWB and similar), evaluate 'Stocks and ETFs Bundle' (stocks + ETFs), separate 'ETF Complete' or broader Complete bundle BEFORE purchase, and confirm selected bundle truly contains each intended ticker. ETF price bars do NOT provide historical membership constituents of Russell 1000; that is a separate research task.
+Provider-reported approximate sizes as of check: Stocks Complete ZIP 28GB/extracted 290GB; Stocks+ETFs ZIP 34GB/extracted 380GB; Complete incl other classes ZIP 40GB/extracted 440GB. Figures are estimates; actual inventory from purchase portal is authoritative. Main Bosgame SSD originally ~892GB free, so explicitly assess disk space for original ZIP files, extracted files, caches, raw Massive data, and growth. Consider separate SSD/backup and avoid automatic uploading of raw licensed data to Google Drive.
+AFTER PURCHASE - ENFORCE BEFORE ACCESS EXPIRES:
+1. Record purchased SKU, license, billing/update status, purchase/access expiry date, point-in-time provider ticker manifest, date coverage, frequency, adjustment variants, archive inventory (names, sizes and partitions), and which formats are actually supplied.
+2. Codex should automate exhaustive historical downloads of ALL entitled archive partitions, all separately listed Delisted/Other Data files, and all available updates during the paid/included window; implement safe retry/resume, no destructive overwrites, detailed logs, downloaded-vs-expected reconciliation.
+3. Validate each ZIP integrity and all SHA256 checksums locally; verify actual ticker counts, date ranges, timeframes, representative symbols, delisted samples, split/dividend/unadjusted variants where offered. Flag gaps and ask vendor about missing/inconsistent entitlements. Save the audit and human-readable completeness report locally.
+4. Retain unmodified original archives and manifest, establish at least one independent verified backup, and create usable extracted/converted research store only after capacity review. Do not confuse successful transfer with verified complete dataset.
+5. Download and reconcile daily updates through last authorized access date; note that split/dividend revisions can require refreshed full adjusted ticker history. Capture exact final covered trading date and update rule.
+6. Never allow cancellation/access expiry to proceed without a formally verified FULL_DOWNLOAD_COMPLETE report or explicit user acceptance of remaining gaps. Optional renewal is user decision, not automatic.
+Official provider pages consulted: https://firstratedata.com/about/FAQ ; https://firstratedata.com/about/license ; https://firstratedata.com/b/22/stock-complete-historical-intraday ; https://firstratedata.com/cb/4/complete-stocks-etf ; https://firstratedata.com/it/etf .
+At this entry: NO FirstRate purchase/subscription/download has occurred. This section records requirements only; no trading/IBKR service changes.
+
+[2026-10-25] FIRSTRATE PRICE VERIFICATION AND STOCKS+ETFS SAMPLE REVIEW
+User directly observed checkout/page prices: Stocks+ETFs initial $629.95 USD, Company Fundamentals add-on $209.00 USD, total $838.95 USD before any additional checkout taxes/fees. No purchase authorized or performed. Subscription/update rate for the combined bundle PLUS fundamentals still needs exact vendor confirmation; product page states $79.95/month for price-data updates, fundamentals has separate update terms.
+User supplied frd_complete_stock_etf_sample.zip (sample only; not full purchased data). Inspected locally by assistant, no code execution from archive: ZIP integrity check passed; 22 entries = 20 OHLCV CSVs for AAPL, MSFT, SPY, QQQ at 1m, 5m, 30m, 1h, 1day over 2026-10-09 through 2026-10-23, plus _company_profiles_sample.csv and _readme_documentation.txt. No repeated timestamps per file, negative volume, or elementary OHLC high/low violations in sample. Intraday spans US Eastern 04:00-19:59 (pre/post market included); no-trade/minutes with zero volume omitted. Sample has no fundamentals financial statements/earnings/valuation data and prices filenames do not identify adjustment variant, therefore adjusted/unadjusted variants need verification against production package.
+IMPORTANT DOCUMENTATION DEFECT: _readme_documentation.txt has 'ETF Tickers' heading but beneath it apparently repeats the STOCK ticker list (including AAPL; IWB/SPY/QQQ are missing from this list); sample nevertheless includes SPY/QQQ, and the FirstRate online bundle catalog lists IWB (start 2000-05-19), SPY and QQQ. Accordingly sample README is NOT reliable as canonical delivery manifest. Mandatory: obtain authoritative, SKU-specific archive inventory from customer delivery portal; reconcile ALL archives/ticker lists/adjustment variants/delisted and corporate-action data and fundamentals before confirming FULL_DOWNLOAD_COMPLETE.
+Before buying $209 Fundamentals add-on, download and inspect the SEPARATE fundamentals sample; validate historical publication/availability dates, restatements, identifiers and actual point-in-time usability; provider marketing 'point-in-time' must be checked against delivered data. Preserve full vendor entitlement requirements in preceding Master History entry. No Bosgame or Hetzner trading services accessed or changed in this sample-review activity.
+
+[2026-10-25] WEEKLY_MAINTENANCE: START at 2026-10-25T08:00:00Z. Trading controller will stop; Ubuntu packages will be updated in controlled maintenance; server will reboot afterward. IB Gateway authentication may require user action after reboot.
+
+[2026-10-25] WEEKLY_MAINTENANCE: PACKAGE PHASE COMPLETE. Controlled reboot initiated; post-reboot Gateway/API authentication and reconciliation are required before trading resumes.
+
+[2026-10-27] BOSGAME MASSIVE ACQUISITION - LOCAL DATA RECOVERY, DOWNLOADER, PHASE 1 COMPLETE PENDING CALENDAR REVIEW
+Evidence is operator-provided Codex reports and screenshots; this is NOT a direct independent inspection of Bosgame. Research workstation: DESKTOP-QRDIOSM, Windows 11. Projects remain separate: independent quantitative/backtesting laboratory C:\Users\Gio\Documents\TradingBotR1000\quant_lab, and data acquisition project C:\Users\Gio\Documents\MarketData-Acquisition. Main data area C:\MarketData\Massive. No research source code or live trading functions were transferred from Hetzner. The local backtest engine previously passed synthetic tests but is not yet a validated real-market multi-asset engine.
+Legacy Polygon/Massive recovery completed 2026-10-25 by Codex from D:\TMP1 to C:\MarketData\Massive, preserving source-relative paths: 2,116 files, 2,541,734,158 bytes, all source/destination SHA256 matching, zero mismatches. Includes 47 ticker-specific 1-minute Parquet files (~2.06 GB), 1,029 daily-bars CSV including 4 repair backups (~193 MB), 1,027 original Massive corporate-action/reference files (~28.5 MB), 13 selected downloader checkpoints/metadata (~260 MB). Three diagnostic/status files containing possible embedded credentials deliberately excluded, originals preserved on D:. Complete copy of selected source data is NOT proof of complete commercial Massive entitlement; 47 Parquet files' internal time coverage was not yet decoded.
+Codex created dedicated Python acquisition program, SQLite manifest/checkpoints, S3 listings and resumable download, gzip/CRC/SHA256 checking, error handling, safe non-overwrite rules, Windows Credential Manager integration, logging, isolated Python environment and mock tests; 46 then 50, 60, 70, finally 74 offline tests were reported passed during development. Demonstrated unattended Task Scheduler operation offline with user signed out and Codex closed, but operational password-based task registration subsequently failed twice. User chose simpler Python downloader in logged-in Windows session (screen may be locked), rather than continued Password Task Scheduler setup. Operational status must be checked from Python process/manifest; do not equate Codex chat with download worker.
+Massive Stocks Advanced individual subscription reactivated 2026-10-26: next payment 2026-11-26, $199.99 USD monthly, as shown in user's billing screen. User supplied S3 Access Key ID and corresponding Secret Access Key LOCALLY through protected Windows prompts into Credential Manager; do not record/show credentials. Initial S3 ListObjectsV2/HeadObject gave HTTP403, while browser File Browser downloads succeeded. User supplied 2003-09-25.csv.gz (881,367 bars, 7,657 ticker symbols) and 2003-09-26.csv.gz (848,351 bars, 7,579 tickers) as manual proof; gzip/CSV/SHA256 checked by Codex. Subsequent corrected local credential entry resolved S3 access; code also fixed LastModified precision mismatch (milliseconds in listing vs seconds in HEAD/GET) after user approval, with offline regression tests.
+Authenticated phase-1 minute-bar inventory: 5,818 objects, first trading date 2003-09-10, last at initial inventory 2026-10-23, total 86,515,408,111 bytes (80.57 GiB); one 2003-09-10.csv.gz file was acquired and verified as sample, 870,880 rows across 7,718 symbols. User explicitly authorized downloading ONLY phase 1 entire US stocks/ETF 1-minute Flat Files. No Phase 2/3/4 authorization to start automatically.
+Phase-1 download progress reported at 2026-10-27T00:02:07.257090Z: status batch_finished_requires_review; verified 5,818/5,818 objects (100%), 86,515,408,111/86,515,408,111 bytes, zero remote errors, current object None, about 4.75 MiB/s observed average during last run including verification, 866,099,097,600 bytes free remaining on C:. About 86,502,438,843 bytes transferred over network after bulk start (sample already present). SHA256 and gzip/checkpoint controls active. Original 2,116 legacy files remain unchanged according to Codex. Status files local: C:\Users\Gio\Documents\MarketData-Acquisition\state\phase1-progress.json and reports/PHASE1_CALENDAR_CLASSIFICATION.json.
+IMPORTANT: All inventory-listed files verified does NOT certify temporal completeness. There are 216 weekdays with no archive, not yet individually reconciled to exchange holidays, extraordinary closures, or genuine data gaps. New Massive objects after last initial inventory date (2026-10-23) not yet reconciled. User instructed Codex to classify 216 days against exchange calendars and independently re-list newer objects, proposing incremental acquisition without automatically proceeding. Phase 1 batch thus COMPLETED FOR SNAPSHOT, PENDING FINAL CALENDAR/COVERAGE AUDIT AND UPDATES.
+ACQUISITION PRIORITY AGREED: (1) complete 1-minute stocks/ETF historical flat files; (2) acquire historical fundamentals available with plan, with explicit point-in-time and delisted limitations (ratios may be current snapshot only); (3) daily bars, reference data including inactive/delisted, ticker changes, splits, dividends; (4) selective trades/quotes for approximately 20 tickers; final list not yet chosen. Candidate symbols include SPY, QQQ, IWB, GLD, SLV, MSFT, AMZN, GOOG, GOOGL, AAPL. Phase 4 remains suspended, no download authorization. Do not bulk-download full-market trade and quote archives (orders of terabytes).
+Historical Russell 1000 constituent reconstruction is a useful nonblocking research task, potentially based on verified IWB holdings/SEC records; ETF price history is NOT index membership history. FirstRate and Kibot were considered but not purchased. Massive post-cancellation data retention/use license remains to be clarified; private/offline use cannot be assumed legally unrestricted. Do not send raw licensed market data to Google Drive. Drive is proposed only as temporary transfer for selected reports to personal PC/portable SSD. Backup of downloaded Massive historical database on independent media remains an important open requirement.
+This Master History update documents external Bosgame work only. SentinelX connected to Hetzner solely to back up/append this historical text and restore correct ownership; NO trading service, order, strategy, IBKR gateway, bot code or host configuration is to be modified.
+
+
+[2026-10-27] MASSIVE PHASE1 CLOSED PER CODEX REPORT; REVISED PROGRAM 45 INSTRUMENTS + BITCOIN
+# Programma acquisizione e preparazione dati — 27 ottobre 2026
+
+## Stato e autorizzazione
+Programma di ricerca approvato dall'utente in questa conversazione: 45 strumenti USA piu Bitcoin, giornalieri come ultimo download dopo le altre acquisizioni. L'approvazione riguarda il programma e la lista; non avvia automaticamente nuove fasi, incrementi, acquisti o abbonamenti. Bosgame e il luogo di esecuzione; Hetzner conserva la documentazione di continuita. Nessuna modifica ai servizi di trading.
+
+## Fase 1: chiusura secondo il rapporto Codex fornito dall'utente
+Rapporto datato 2026-10-27 06:38 Dubai / 02:38 UTC. Batch iniziale certificato: 2003-09-10 / 2026-10-23, 5.818 archivi, 86.515.408.111 byte. Nuova rilettura gzip/CRC/SHA256 superata; zero file mancanti o errori d'integrita; integrity_check SQLite ok; 2.116 file preesistenti invariati. 75 test offline dichiarati superati.
+216 feriali senza archivio iniziale riconciliati: 209 festivita ordinarie, 6 chiusure straordinarie, 1 giornata successiva al perimetro (2026-10-26). Zero sessioni attese mancanti entro il 23 ottobre.
+Listing riportato alle 06:38:40 Dubai / 02:38:40 UTC: nessun archivio oltre il 23 ottobre. Non e una verifica del listing attuale. Il 26 ottobre non e acquisito ne certificato; eventuali nuove giornate sono un incremento separato.
+Certificazione riferita agli oggetti/revisioni inventariati e alla presenza delle sessioni, non a copertura universale per ticker, accuratezza di ogni barra o universo point-in-time. SHA256 e CRC sono controlli locali; nessun checksum indipendente del fornitore dichiarato.
+Fonte: rapporto esterno Codex incollato dall'utente, non audit indipendente diretto sul Bosgame da questa sessione.
+Evidenze locali riportate:
+- reports/PHASE1_COMPLETENESS_FINAL.json
+- reports/PHASE1_CERTIFIED_MANIFEST_2026-10-27.csv
+- reports/phase1-closeout-20261027T023148875107Z/result.json
+- state/manifest.sqlite
+- MASSIVE_PHASE1_CALENDAR_RECONCILIATION.md
+- reports/PHASE1_CALENDAR_CLASSIFICATION.csv e .json
+
+## Ordine di lavoro aggiornato
+1. Fase 1 minuti Stocks/ETF: chiusa per il perimetro certificato sopra. Conservare gli originali immutati e predisporre una copia indipendente verificata.
+2. Fondamentali storici effettivamente inclusi nel piano: inventario, date di pubblicazione/disponibilita, revisioni, limiti point-in-time e titoli cessati.
+3. Reference/corporate actions: identificativi, cambi ticker, listing/inactive/delisted, split e dividendi. Questi metadati precedono la costruzione delle serie rettificate.
+4. Dettaglio selettivo sui 45 strumenti piu Bitcoin:
+   a. Verificare copertura dei 45 ticker negli archivi gia acquisiti; estrarre le barre a un minuto senza riscaricare gli originali.
+   b. Pianificare Trades e Quotes per gli stessi strumenti, secondo disponibilita e diritti reali. Prima un campione rappresentativo e una stima dello spazio per anno e per intero periodo; il programma non autorizza un download indiscriminato di tutti i tick.
+   c. Bitcoin: verificare provider, accesso e copertura di BTC/USD; mantenere separato il mercato crypto 24/7 dalle sessioni azionarie USA. Eventuali Trades/Quotes crypto sono condizionati a effettiva disponibilita.
+5. ULTIMO DOWNLOAD: barre giornaliere dell'intero universo Stocks/ETF disponibile nel perimetro concordato, piu BTC/USD se accessibile. Confrontare con i giornalieri legacy, mantenendo gli originali e distinguendo dati grezzi/rettificati. La lista mirata non restringe il dataset giornaliero del backtest R1000.
+
+## Lista approvata: 45 strumenti USA
+- Mercati USA (6): SPY, QQQ, IWB, IWM, DIA, VTI.
+- Mercati esteri quotati USA (2): EFA, EEM.
+- Obbligazioni (3): TLT, IEF, HYG.
+- Settori (5): XLK, XLF, XLE, XLV, XLI.
+- Metalli preziosi (2): GLD, SLV.
+- Altre commodity (4): DBC, USO, CPER, DBA.
+- Tecnologia/piattaforme (8): MSFT, AAPL, AMZN, GOOGL, IBM, ORCL, CSCO, INTC.
+- Finanza (3): JPM, BAC, BRK.B.
+- Energia (2): XOM, CVX.
+- Salute/consumi (5): JNJ, PG, KO, PEP, WMT.
+- Industria/ristorazione (2): CAT, MCD.
+- Altri grandi titoli (3): NVDA, META, TSLA.
+Totale: 22 ETF/ETP + 23 azioni = 45. Gestire BRK.B con il ticker effettivo del provider e mappare nomi storici senza inventare continuita.
+
+## Bitcoin: linea di studio numero 46
+Asset: BTC/USD spot. Massive usa X:BTCUSD nel REST; il dataset crypto e distinto da Stocks (flat files global_crypto/minute_aggs_v1). Dati e piano crypto vanno verificati prima di qualsiasi acquisto/download. Una data iniziale pubblicizzata per il dataset crypto complessivo non prova copertura continua di BTC/USD su ogni exchange.
+Definire se la serie e aggregata multi-exchange o specifica di una sede, identificare valuta, timezone UTC, calendario 24/7, eventuali buchi e cambi di fonte.
+IBIT e un possibile proxy USA da valutare successivamente, NON aggiunto automaticamente ai 46: ha storico molto piu corto e orari di borsa, pertanto non sostituisce BTC/USD.
+
+## Spazio e qualita
+- Conservare i .csv.gz originali e leggere in streaming; evitare l'estrazione simultanea di tutti i CSV.
+- Archivio analitico selettivo in Parquet compresso, senza duplicati inutili 1m/5m/15m/1h: gli aggregati derivabili si generano su richiesta salvo esigenza misurata.
+- Misurare campione, righe e byte per simbolo/anno; stimare spazio finale, temporanei e backup prima dei Trades/Quotes. Nessuna cifra totale garantita senza misurazione.
+- Non usare flat files Trades/Quotes dell'intero mercato come scorciatoia per soli 45 simboli se implica volumi sproporzionati; valutare richieste selettive e limiti del piano.
+- Per backtest R1000 mantenere universo storico e titoli cessati; i 45 sono un pannello di studi mirati e non sostituiscono l'universo point-in-time.
+- Disponibilita storica reale per strumento: non imporre 30 anni a strumenti piu giovani; nessun dato retrodatato o riempimento dei periodi pre-listing.
+- Confrontare prezzi, sessioni regolari/estese, split, dividendi e regole dei futures/roll. Non assumere andamento regolare delle commodity: misurare gap, volatilita, spread e stabilita fuori campione.
+
+## Riferimenti ufficiali consultati
+- https://massive.com/docs/flat-files/crypto/minute-aggregates
+- https://massive.com/docs/flat-files/crypto/overview
+- https://massive.com/knowledge-base/article/what-asset-classes-are-availalbe-through-massives-currencies-subscription
+- https://www.ishares.com/us/literature/press-release/blackrocks-bitcoin-etf-ibit-clears-final-sec-hurdle.pdf
+
+## Handoff al progetto locale
+Progetto locale: C:\Users\Gio\Documents\MarketData-Acquisition.
+Laboratorio: C:\Users\Gio\Documents\TradingBotR1000\quant_lab.
+Dati: C:\MarketData\Massive.
+Il Codex locale deve recepire questo aggiornamento nei propri piani rispettando gli AGENTS.md locali e i confini fra pianificazione, inventario e download. Questa sessione non ha accesso diretto al Bosgame e non ha modificato il downloader, i task Windows, i manifest o gli archivi.
+
+This entry supersedes the earlier 2026-10-27 pending-calendar status, approximately-20-ticker detail list and acquisition sequence only. Original entries retained for audit. No new download, subscription, increment, trading change, or Bosgame operation executed.
+
+
+## Autorizzazione successiva — 27 ottobre 2026: Fase 2
+L'utente ha ora autorizzato esplicitamente la prossima fase, i fondamentali Massive. Questo aggiorna il precedente stato di sola pianificazione per la Fase 2, senza autorizzare fasi successive, nuovi abbonamenti o incrementi della Fase 1.
+Esecuzione sul Bosgame nel progetto MarketData-Acquisition, non sul server di trading. Questa sessione non dispone di accesso operativo diretto al Bosgame; il Codex locale deve ricevere l'handoff.
+
+Perimetro: acquisire tutto lo storico dei tre bilanci disponibile agli endpoint inclusi nel piano Stocks Advanced (income-statements, balance-sheets, cash-flow-statements), frequenze effettivamente supportate; acquisire ratios solo come snapshot corrente, non come serie storica. Universo completo restituito dai servizi, non solo le 23 azioni selezionate per studi mirati; ETF/commodity/BTC non hanno bilanci societari equiparabili.
+Usare /stocks/financials/v1/ e non il vecchio /vX/reference/financials dismesso. Verificare autenticazione REST separatamente da credenziali S3. Riusare credenziali protette locali e richiedere eventuale API key solo tramite prompt locale nascosto; nessun segreto nei report, URL, next_url o log.
+Prima inventario e campioni, poi esecuzione completa della sola Fase 2 se l'accesso incluso e confermato. Non chiedere ulteriore conferma per ogni pagina. Nessun acquisto o upgrade automatico. Documentare eventuali altri endpoint fondamentali accessibili e il loro perimetro, senza promuovere altre fasi.
+Vincoli qualitativi: dati normalizzati aggiornati/rettificati non equivalgono a valori originariamente pubblicati. filing_date puo indicare un filing successivo che ripropone il periodo; EPS/share count possono includere split successivi. Non usare period_end come data di disponibilita. Non promettere dati PIT ne copertura delisted; acquisire metadata filing necessari alla tracciabilita come parte di questa fase, senza scaricare indiscriminatamente documenti SEC o avviare l'intera fase reference. Conservare questo limite anche se la paginazione termina correttamente.
+Output: originali JSON compressi immutati per acquisizione/versione, manifest con query sanificate e timestamp UTC, paginazione/checkpoint/retry, hash, deduplica, rapporto per endpoint/frequenza/ticker/date e limiti; preservare la Fase 1 certificata e i 2.116 originali legacy. Nuovi test offline devono verificare paginazione, ripresa, risposte vuote, 403/429 e nessuna perdita/sovrascrittura.
+Stop finale dopo rapporto Fase 2. Nessun download Daily, Trades/Quotes, crypto o fase reference completa; nessuna modifica a trading/IBKR.
+
+Fonti ufficiali verificate il 27/10/2026:
+https://massive.com/docs/rest/stocks/fundamentals/income-statements
+https://massive.com/docs/rest/stocks/fundamentals/balance-sheets
+https://massive.com/docs/rest/stocks/fundamentals/cash-flow-statements
+https://massive.com/docs/rest/stocks/fundamentals/ratios
+https://massive.com/knowledge-base/article/does-massive-provide-the-filing-date-for-any-financial-reports
+https://massive.com/knowledge-base/article/what-fields-can-i-expect-from-massives-financials-api
+
+
+## Fase 2 — acquisizione conclusa, verifica qualitativa sospesa (27 ottobre 2026)
+Fonte: rapporto esterno Codex comunicato dall'utente; i documenti locali del Bosgame non sono stati letti direttamente da questa sessione.
+- 338 originali JSON gzip; 1.106.911 record; 122.566.920 byte compressi.
+- Tutte le pagine delle frequenze supportate acquisite secondo il rapporto; ratios mantenuti separati.
+- SHA256, gzip/CRC e SQLite verificati; 87 test offline superati secondo il rapporto.
+- Fase 1 e 2.116 file preesistenti invariati nei controlli eseguiti.
+- 40 record di 27 CIK presentano filing_date precedente a period_end; originali conservati senza correzioni arbitrarie.
+- Acquisizione/integrita concluse; certificazione definitiva della qualita sospesa. Non equiparare conclusione della paginazione a validita finanziaria, copertura universale o idoneita point-in-time.
+- Task operativo disabilitato dopo acquisizione; nessuna fase successiva avviata secondo il rapporto.
+
+Documenti sul Bosgame:
+C:\Users\Gio\Documents\MarketData-Acquisition\MASSIVE_PHASE2_COMPLETENESS_FINAL.md
+C:\Users\Gio\Documents\MarketData-Acquisition\MASSIVE_PHASE2_SUPPORT_DRAFT.md
+Bozza assistenza NON inviata; nessuna autorizzazione a inviarla in questa sessione.
+
+Prossimo controllo interno alla Fase 2: esaminare i 40 record senza riscaricare il dataset; produrre elenco record-level con endpoint, CIK/ticker, timeframe, period_end, filing_date, file/pagina originale e hash, distinguendo errore del payload da eventuale parsing locale. Raggruppare le anomalie e confrontare casi rappresentativi con filing ufficiali quando identificabili. Conservare gli originali; proporre esclusione esplicita dal dataset validato dei soli record non risolti, con impatto sui test e report separato. Non correggere date per supposizione, non dichiarare la qualita certificata e non avviare altre fasi automaticamente.
+
+
+## Fase 2 — esito verifica qualitativa mirata (27 ottobre 2026)
+Fonte: rapporto esterno Codex fornito dall'utente; nessuna lettura indipendente del Bosgame da questa sessione.
+- Tutte le 40 anomalie filing_date < period_end sono presenti nei JSON originali; nessuna introdotta dal parsing locale.
+- Cinque record rappresentativi confrontati con filing ufficiali, secondo il rapporto. Non estendere il confronto a tutti i record ne dedurre correzioni non riportate.
+- Vista filtrata: 1.106.871 record ammessi su 1.106.911 acquisiti; 40 esclusioni (0,00361366%).
+- Tutti i 5.600 CIK conservati; 18 combinazioni azienda/endpoint/frequenza/periodo senza righe ammesse. Restano lacune esplicite, senza imputazione o ricostruzione arbitraria.
+- La vista filtrata supera il controllo cronologico verificato. Non e una certificazione globale di accuratezza, copertura, dati originariamente pubblicati o idoneita point-in-time.
+- Certificazione globale ancora sospesa. Acquisizione e integrita concluse; anomalia sorgente documentata, originali immutati.
+- 92 test offline superati secondo Codex. Rapporto finale e bozza assistenza aggiornati; nessun invio, riscaricamento o nuova fase avviati.
+
+Evidenze locali riportate:
+C:\Users\Gio\Documents\MarketData-Acquisition\MASSIVE_PHASE2_QUALITY_REVIEW.md
+C:\Users\Gio\Documents\MarketData-Acquisition\reports\PHASE2_40_RECORDS_REVIEW.csv
+
+Ordine del programma invariato: prossimo ambito pianificato reference/corporate actions (identificativi, cambi ticker, inattivi/delisted, split, dividendi); dettaglio selettivo/Bitcoin successivi e giornalieri per ultimi. Il presente aggiornamento registra risultati e non avvia ne autorizza automaticamente fasi successive.
+
+
+## Autorizzazione Fase 3 — 27 ottobre 2026
+L'utente ha detto "andiamo avanti" dopo l'esito qualitativo della Fase 2 e l'indicazione della Fase 3. E autorizzata la sola acquisizione reference/corporate actions gia prevista, sul Bosgame tramite Codex locale. Nessun nuovo abbonamento, acquisto o promozione automatica delle fasi successive.
+Fase 2 resta acquisita/integrita verificata; vista filtrata supera il controllo cronologico, con 40 record esclusi e 18 combinazioni mancanti; nessuna certificazione qualitativa globale o PIT aggiuntiva.
+
+Perimetro operativo:
+- Catalogo Stocks/ETF attivi e inattivi, tipi titoli e schede/identificativi: ticker, CIK, FIGI disponibili, exchange, valuta, date listing/delisting dove presenti.
+- Liste storiche effettive per le sedute certificate 2003-09-10 / 2026-10-23 tramite date su All Tickers; conservare le pagine e distinguere record storicamente efficaci da versioni originariamente disponibili quel giorno.
+- Non restringere al pannello dei 45 o ai soli 5.600 CIK dei fondamentali. Non usare filtri type/exchange che eliminino record storici con campi vuoti.
+- Ticker events e rinominazioni: preservare identita per security/share class e intervalli temporali; CIK da solo non identifica una singola classe. Record ambigui restano segnalati. Usare data/identificativi adatti ai titoli cessati; non scambiare NOT_FOUND con copertura completa.
+- Split e dividendi: tutto lo storico accessibile ai nuovi endpoint /stocks/v1/splits e /stocks/v1/dividends, mantenendo fattori e importi originali/rettificati distinti. Eventi futuri non diventano retroattivamente effettivi. Non modificare le barre o i fondamentali per applicare rettifiche in questa fase.
+- REST key gia salvata va riusata dal credential store locale; nessuna visualizzazione, esportazione o reinserimento salvo mancata disponibilita provata.
+- Inventario/campioni e stima richieste/spazio/temporanei prima del bulk; procedere nel perimetro incluso, con rate limit/retry/checkpoint, compressione JSON e deduplica. Rispettare riserva disco esistente. Se piano/capacita non consentono il perimetro, riportare limite concreto senza ridurlo silenziosamente.
+- Preservare Fasi 1/2, 2.116 file legacy e relativi manifest. Ogni nuovo batch ha proprie evidenze e certificazione di integrita separata dalla qualita.
+- Rapporto finale per endpoint/date/pagine/identita, gap/errori/ambiguita e confronto campioni; test di paginazione/ripresa, campi vuoti, ticker riusati e classi multiple.
+- Non avviare Daily, Trades/Quotes, crypto, ulteriori incrementi minuti o trading. Nessun contatto assistenza inviato.
+
+Fonti ufficiali consultate:
+https://massive.com/docs/rest/stocks/tickers/all-tickers
+https://massive.com/knowledge-base/article/does-massive-have-a-downloadable-security-master
+https://massive.com/docs/rest/stocks/corporate-actions/splits
+https://massive.com/docs/rest/stocks/corporate-actions/dividends
+La lista storica titoli non certifica la composizione storica Russell 1000; tale ricostruzione resta distinta.
+Questa sessione ha aggiornato solo la documentazione su Hetzner. Download non avviato da qui: handoff al Codex locale necessario.
+
+[2026-10-28] BOSGAME MASSIVE PHASE 3 - FINAL AUDIT AND CLOSURE
+Source: user-supplied Codex final audits, not independent Bosgame inspection. Phase 3 reference/actions closed for authorized acquisition: 130,456 terminal jobs (99,376 complete, 31,080 unavailable), 246,193 gzip pages, 121,904,962 records, 4,275,895,351 compressed bytes. Full local integrity audit reported zero technical anomalies. Unavailable: 31,079 events HTTP404 "No events found for given ID" and 1 overview ACA HTTP404 at 2026-10-27; these responses are not proof of universally absent events. Splits 27,920, dividends 730,744; preserve future-dated values without asserting point-in-time validity.
+Five specifically authorized overview probes: ACA 2026-10-23 HTTP200 with matching historical identity; CBBw, RSTN.E, STLw at 2003-09-11 and EQR at 2026-08-18 HTTP404. EQR historical CIK/context discrepancy unresolved. 1,807 events-context associations were not demonstrated, 144 with alternate FIGI match. Validated-view rules prepared, but complete 121.9M-record validated view not materialized. Do not infer security identity from ticker or CIK alone. Original data and initial batch manifests unchanged; 114 offline tests reported passed. USER DECISION: Phase 3 finished for acquisition and technical integrity WITH explicit historical and point-in-time limitations; no further retries or autonomous research/acquisition.
+
+[2026-10-28] BOSGAME MIGRATION COMPLETE - C:\QuantResearch
+Source: user-supplied Codex migration report, closing 2026-10-28 10:13:59 Dubai. Productive rename/verification window ~13m20s, excluding preparation. Migrated same-volume NTFS with no redundant bulk copy, 254,566 original files totaling 93,472,831,320 bytes verified by before/after SHA256, size, mtime and NTFS file ID. 15 SQLite integral, 142 offline tests passed. Around 859GB SSD free at closure. Old working roots left as empty placeholders, no permanent junctions; task and project paths updated. No live/Paper trading changes.
+New permanent organization: C:\QuantResearch\Data\Massive for market data; C:\QuantResearch\Acquisition\Massive for Python downloader, manifest/checkpoints, technical reports and anomaly databases; C:\QuantResearch\Research\QuantLab for engines and strategy source; C:\QuantResearch\Backtests\Runs for run reports, C:\QuantResearch\Backtests\Registry\backtests.sqlite3 as ONLY authoritative run register, C:\QuantResearch\Backtests\BACKTEST_INDEX.csv auto-generated for convenient consultation; Docs for README, migration and backup instructions. BT000001 through BT000004 preserved; synthetic smoke run BT000005/STR0002 added; all five are synthetic, not validated real-market strategies. Missing metrics remain NULL. ID allocator transactional; CSV derived, not authoritative. No external independent backup yet: important outstanding risk.
+
+[2026-10-28] MASSIVE PHASE 4 - DAILY ACQUIRED, 45-TICKER SELECTIVE PREPARED
+Source: user-supplied MASSIVE_PHASE4_REPORT.md. Universe is 45 US instruments (22 ETFs and 23 stocks), NOT 20. BTC/USD separate, crypto Trades test HTTP403 not authorized; no upgrade. 90 Trades/Quotes ticker-endpoint combinations sampled successfully at two endpoints (180 HTTP200 probes), which does not establish continuity or stable historical identity. AAPL 2026-10-23 sample: 627,289 trades and 648,724 quotes, around 28.1MB gzip; no exact duplicates. Identity cautions include literal META before the 2022 rename, GOOG vs GOOGL and BRK.B vs BRK.A. REST acquisition selective and checkpointed.
+Daily US market-wide Flat Files completed: 5,820 archives, 952,463,346 bytes, 50,121,424 CSV records covering 2003-09-10 to 2026-10-27. Original-source anomaly: 29 records in 2019-08-12 file have next-day timestamp; flagged/excluded for future validated view, originals intact, none among 45 ticker subset. 136 offline tests passed in Phase 4 report. Tick full-history projections for 45 instruments: roughly 2.7TB base to 17.1TB prudent gzip, not feasible on current SSD or serial REST method. No complete 45-ticker bulk download authorized.
+
+[2026-10-28] MASSIVE PHASE 4 - SPY/MSFT/GLD PILOT SUSPENDED, TASK DISABLED
+User authorized only SPY (S&P 500 ETF), MSFT (Microsoft stock), GLD (gold ETF, not spot) Trades and Quotes 2026-09-28 through 2026-10-27, extended session included; cap 20GiB cumulative wire+gzip and 50GiB disk reserve. Task Windows Gio InteractiveToken autonomous from Codex. Last progress user provided as of 2026-10-28T08:15:10Z: 4/180 jobs, 1,177 pages, 5,877,307 records, 117,640,048 compressed bytes, 249,694,410 cumulative budget bytes, 0 reported errors, ~0.081MiB/s service/wire, ~858GB free. This is PARTIAL progress, not final tally.
+User reported interruption and chose to halt tick acquisition temporarily, retaining current downloads and checkpoints; avoid restarting before approving improved strategy. Codex checked task MarketData-Acquisition-Phase4-Selective: DISABLED; active pilot processes: ZERO; data, manifest, checkpoint, logs and reports preserved with nothing deleted. Key checkpoint: C:\QuantResearch\Acquisition\Massive\state\phase4-selective\2b5525bd002dc71afd2ec1e44fef3ae3dc35ea227b78fb139d29a334edc19533\manifest.sqlite. No automatic restart. Proposed future efficiency research: larger REST pages (5,000 vs possible 50,000), parallel independent ticker/date tasks, HTTP pooling, or S3 full-day trades/quotes streaming selective filtering. None of these options implemented/validated yet. Minute/daily and reference datasets already support long-horizon research; tick pilot does not block backtesting.
+All these entries are external Bosgame status from user/Codex reports, not independently inspected with SentinelX. This Hetzner operation is HISTORY ONLY, without changes to trading, brokerage, services or code.
+
+[2026-10-28] BOSGAME RESEARCH DATA BACKLOG - HISTORICAL IWB CONSTITUENTS / HOLDINGS (NOT DOWNLOADED)
+User explicitly highlighted an outstanding acquisition: download the composition of IWB (iShares Russell 1000 ETF), with priority on HISTORICAL date-stamped constituent holdings, not only the current holdings snapshot. Research objective: reconstruct time-specific investable stock universes for look-ahead/survivorship-bias-controlled historical backtests, including additions/removals and weights when available.
+This data is NOT present merely because IWB price bars, massive reference history, or day/minute market data were acquired. Actual historically available IWB holdings data sources, date range, frequency, identifiers, as-of dates, availability/publication dates, licensing and completeness remain to be inventoried and verified. IWB holdings are only a proxy for Russell 1000 index membership; they are not automatically identical to official historical index constituent files. Preserve delisted/ticker-change identity issues and do not infer constituents from current holdings.
+Suggested future Bosgame location within approved single-root structure: C:\QuantResearch\Data\IWB\ for raw/validated date-stamped holdings, and C:\QuantResearch\Acquisition\IWB\ for fetch code, inventories, quality audits and gap reports; research uses verified time-effective membership via explicit dataset version. Keep acquisition documentation separate from Backtests. Check what holdings data are available from issuer and other sources, then plan a bounded historical collection; avoid claiming historical completeness without dated evidence.
+STATUS: PENDING / NOT ACQUIRED / NO DOWNLOAD STARTED. No automatic authorization to purchase data or change live/Paper trading. This entry records backlog only.
+
+
+======================================================================
+[2026-10-29] QUANTRESEARCH / CODEX - PIANO RISPARMIO TOKEN E QUOTE (V1)
+Tipo: registro di decisione e linee guida operative; non una modifica tecnica.
+======================================================================
+
+CONTESTO E MISURE
+Il 29/10/2026 l'utente ha rilevato: 225.451.565 token in sette giorni, circa 99% su GPT-6.1 Sol. La finestra di cinque ore era esaurita, mentre restava il 31% settimanale (fotografia temporanea). I cinque lavori Codex piu costosi indicati nella dashboard erano: Attivare accesso Massive (35,05 punti percentuali del limite settimanale), Acquisisci composizione storica IWB (21,94), Avviare ricerca reversal intraday (13,68), Verifica regole per audit Massive (13,56), Preparare downloader Massive (6,24). Non risultavano crediti aggiuntivi spesi per queste cinque chat. Le percentuali per chat sono cumulative e non devono essere sommate come se fossero tutte nella stessa finestra di cinque ore. Il grafico non distingue Medium e High, ne input, cache e output. Non e dimostrato che High abbia causato il consumo.
+
+OBIETTIVO
+Ridurre in modo misurabile l'utilizzo delle quote Codex conservando qualita statistica, test, tracciabilita e riproducibilita di QuantResearch. Il calcolo massivo resta sul Bosgame; Codex e destinato a disegno, programmazione, controllo e analisi sintetica.
+
+LINEE GUIDA PER FUTURI INCARICHI
+1. Codex Medium per operazioni ordinarie e test; High soltanto per progettazione metodologica difficile e debugging complesso. ChatGPT e Codex hanno selettori distinti; la preferenza documentata non imposta automaticamente il livello nell'applicazione.
+2. Un incarico per volta, con run/BT/STR, directory di input, output, criteri di accettazione e limiti di autorizzazione espliciti. Nessuna estensione autonoma a nuovi dati, nuovi esperimenti o trading.
+3. Contesto minimo sufficiente: indice sintetico di progetto, manifest, configurazioni e moduli coinvolti. Ispezioni per campione, intervallo e diff. I file CSV/JSON voluminosi sono aggregati localmente, senza trascriverli in chat o rileggere intere directory ripetutamente.
+4. Riutilizzo di codice, indici, hash, risultati e test gia verificati. Nessuna modifica retroattiva a run congelati. Nessuna copia o scansione completa dei dataset senza una motivazione metodologica.
+5. Codex: implementazione circoscritta, test automatici, piccolo pilota, freeze delle configurazioni e verifica dell'avvio. Poi worker Python locale con checkpoint, log, progress.json e REPORT.txt. Nessuna sessione Codex impegnata a monitorare ripetutamente il processo autonomo.
+6. Output breve dell'agente: esito dei test, stato, poche metriche essenziali, anomalie e percorsi dei rapporti completi. Diagnostica sintetizzata tramite script locali anziche ampi dump di log.
+7. Quote verificate prima e dopo ogni lavoro significativo: data/ora, chat, modello, livello, quota 5h e settimanale residue, risultato. Soglie iniziali di attenzione, NON garantite dalla piattaforma: 3 punti percentuali settimanali per routine, 5 per audit complessi. In caso di rischio esaurimento si termina il lavoro a checkpoint e si decide l'estensione separatamente. Nessun acquisto automatico di crediti o aumento del piano.
+8. Ricerca quantitativa: preservare registro centrale, identificativi stabili, separazione esplorazione/validazione, campioni indipendenti, integrita originale dei dati Massive e riserva OOS 2024-2026. Il Bosgame resta laboratorio, non trading live. Ridurre i token non giustifica ridurre test o verifiche critiche.
+9. Misurazione: confrontare i prossimi tre lavori comparabili per punti di quota settimanale consumati, numero di interazioni agente, modifiche richieste, test superati e completezza dei risultati. Verificare il risultato anziche promettere percentuali fisse di risparmio.
+
+HANDOFF BREVE PER CODEX (documentazione da riprendere solo ove pertinente)
+L'incarico futuro includera obiettivo, file e output essenziali, limiti operativi, metodo di esecuzione Python indipendente e rapporto sintetico. La quota e una risorsa da controllare, non un motivo per sacrificare la validita scientifica. Nuove autorizzazioni per ambiti aggiuntivi resteranno esplicite.
+
+STATO
+Piano storico approvato per essere registrato, senza cambi automatici di impostazioni Codex o modifiche ai programmi del Bosgame, del bot PAPER o del bot LIVE. Copia di sicurezza del Master History creata prima dell'aggiornamento.
+
+[2026-11-01] WEEKLY_MAINTENANCE: START at 2026-11-01T09:00:08Z. Trading controller will stop; Ubuntu packages will be updated in controlled maintenance; server will reboot afterward. IB Gateway authentication may require user action after reboot.
+
+[2026-11-01] WEEKLY_MAINTENANCE: PACKAGE PHASE COMPLETE. Controlled reboot initiated; post-reboot Gateway/API authentication and reconciliation are required before trading resumes.
+
+
+[2026-11-06] TELEGRAM MARKET-DATA ALERT STORM — ROOT CAUSE AND FIX
+- Operator reported a flood of Telegram error messages.
+- Forensics found 36 market_data_refresh_failure alerts since Nov-01, with the current incident producing one alert roughly every 6 minutes from 2026-11-05 21:45 UTC onward.
+- Root cause: operational_controller intentionally retries a failed daily-bar refresh every few minutes, while telegram_alerts.alert_market_data_refresh_failure() emitted a fresh user notification on every retry. Retry cadence and operator notification cadence were incorrectly coupled.
+- Corrective change: repeated market-data refresh failures for the same expected market session are now suppressed. Automatic refresh retries and fail-closed trading behavior remain unchanged. A new notification is allowed when the expected session changes; failures without a session marker retain a six-hour fallback cooldown.
+- Regression tests added for same-session suppression and new-session notification. Focused alert/preview/runtime suite: 26/26 PASS.
+- Controller restarted after validation so the new alert behavior is active. tradingbot-controller.service returned ACTIVE/RUNNING.
+- Existing alert history was not deleted.
+- Current market-data incident remains real and fail-closed: expected session 20261105; HLT is stale at 20261104, while KVUE and UWMC.R.W fail IBKR contract qualification. This issue is separate from the Telegram spam fix and must not be hidden by notification suppression.

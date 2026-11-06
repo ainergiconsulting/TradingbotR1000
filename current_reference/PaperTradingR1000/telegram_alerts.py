@@ -106,13 +106,46 @@ def start_alert_thread(*_args: Any, **_kwargs: Any) -> None:
 
 
 def alert_market_data_refresh_failure(detail: str) -> None:
+    """Notify once per failed market-data session, not once per retry.
+
+    The controller intentionally retries a failed daily-bar refresh every few
+    minutes until IBKR confirms the required completed session. Those retries
+    are operational behavior and must not create a Telegram storm. A new
+    notification is allowed when the expected session changes; if the detail
+    has no session marker, use a conservative six-hour fallback cooldown.
+    """
+    expected_session = ""
+    marker = "expected_session="
+    if marker in detail:
+        expected_session = detail.split(marker, 1)[1].split(";", 1)[0].strip()
+
+    try:
+        recent = max(
+            cfg.ALERTS_DIR.glob("*_market_data_refresh_failure.json"),
+            key=lambda p: p.stat().st_mtime,
+        )
+        if expected_session:
+            try:
+                import json
+                payload = json.loads(recent.read_text(encoding="utf-8"))
+                recent_message = str(payload.get("message") or "")
+            except (OSError, ValueError, TypeError):
+                recent_message = ""
+            if f"expected_session={expected_session}" in recent_message:
+                return
+        elif time.time() - recent.stat().st_mtime < 6 * 60 * 60:
+            return
+    except (ValueError, FileNotFoundError, OSError):
+        pass
+
     write_alert(
         "market_data_refresh_failure",
         (
             "R1000 MARKET DATA ALERT.\n"
             "IBKR daily-bar refresh failed.\n"
             "Automated BUY orders will remain fail-closed until current data is confirmed.\n"
-            f"Detail: {detail}"
+            f"Detail: {detail}\n"
+            "Automatic retries will continue silently; another alert will be sent only for a new session."
         ),
     )
 

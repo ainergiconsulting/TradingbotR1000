@@ -222,3 +222,12 @@ The Mobile Manual Console no longer keeps an IBKR API socket open while idle. Br
 - At configured slippage, baseline CAGR 14.04%; stop 3% 2.68%; stop 4% 3.71%; stop 0.5% 0.67%. All tested fixed stops reduce return; 0.5% reduces drawdown while sharply reducing time held.
 - Documented the return-based profit_factor metric issue without changing the research engine.
 - Master History now links the consolidated report. Research documentation only; no operational strategy or broker/service changes.
+
+
+## 2026-11-06 - Suppress repeated market-data failure Telegram storm
+- Decoupled automatic market-data retry cadence from Telegram notification cadence.
+- A continuing market-data refresh failure now alerts once per expected market session instead of once per retry.
+- Automatic retries, market-data validation and fail-closed BUY behavior are unchanged.
+- Added regression coverage proving same-session duplicate suppression and new-session re-alerting.
+- Focused tests: 26/26 PASS.
+- Current Nov-05 data incident remains fail-closed (HLT stale; KVUE and UWMC.R.W contract qualification failures) and is being treated separately from notification noise.
